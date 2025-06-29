@@ -1,37 +1,48 @@
 import React, { useState, useEffect } from 'react';
-import { View, Text, ScrollView, StyleSheet, Alert } from 'react-native';
+import { View, Text, ScrollView, StyleSheet, Alert, TouchableOpacity } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import * as DocumentPicker from 'expo-document-picker';
 import * as FileSystem from 'expo-file-system';
 import { LinearGradient } from 'expo-linear-gradient';
-import { Upload, FileText, Settings, Brain } from 'lucide-react-native';
+import { 
+  Upload, 
+  FileText, 
+  Settings, 
+  Brain, 
+  Zap, 
+  Target, 
+  BarChart3,
+  Clock,
+  CheckCircle,
+  AlertCircle
+} from 'lucide-react-native';
 import AsyncStorage from '@react-native-async-storage/async-storage';
+import { useRouter } from 'expo-router';
 import { useTheme, spacing } from '@/constants/Theme';
 import { GlassCard } from '@/components/ui/GlassCard';
 import { Button } from '@/components/ui/Button';
 import { useAuth } from '@/hooks/useAuth';
 import { supabase } from '@/lib/supabase';
-import { aiService } from '@/services/aiService';
+import { 
+  analysisFramework, 
+  AnalysisTemplate, 
+  AnalysisConfiguration, 
+  AnalysisResult,
+  DocumentMetadata 
+} from '@/services/analysisFramework';
 
 interface Document {
   id: string;
   title: string;
   content: string;
-  fileType: 'pdf' | 'txt' | 'md';
+  fileType: 'pdf' | 'txt' | 'md' | 'docx' | 'csv' | 'json';
   fileSize: number;
 }
 
-interface Analysis {
-  id: string;
-  status: 'pending' | 'processing' | 'completed' | 'failed';
+interface AnalysisProgress {
   progress: number;
-  sections?: {
-    summary: string;
-    insights: string;
-    recommendations: string;
-    technical: string;
-    fullReport: string;
-  };
+  message: string;
+  stage: string;
 }
 
 const LOCAL_STORAGE_KEYS = {
@@ -42,9 +53,19 @@ const LOCAL_STORAGE_KEYS = {
 
 export default function AnalyzeScreen() {
   const { colors } = useTheme();
+  const router = useRouter();
   const { user } = useAuth();
   const [document, setDocument] = useState<Document | null>(null);
-  const [analysis, setAnalysis] = useState<Analysis | null>(null);
+  const [selectedTemplate, setSelectedTemplate] = useState<AnalysisTemplate | null>(null);
+  const [analysisConfig, setAnalysisConfig] = useState<Partial<AnalysisConfiguration>>({
+    depth: 'standard',
+    focus: [],
+    outputLanguage: 'en',
+    includeVisualization: true,
+  });
+  const [analysisResult, setAnalysisResult] = useState<AnalysisResult | null>(null);
+  const [analysisProgress, setAnalysisProgress] = useState<AnalysisProgress | null>(null);
+  const [isAnalyzing, setIsAnalyzing] = useState(false);
   const [selectedProvider, setSelectedProvider] = useState<'deepseek' | 'gemini'>('deepseek');
   const [apiKeys, setApiKeys] = useState({
     deepseek: '',
@@ -53,12 +74,16 @@ export default function AnalyzeScreen() {
 
   useEffect(() => {
     loadSettings();
+    // Set default template
+    const templates = analysisFramework.getTemplates();
+    if (templates.length > 0) {
+      setSelectedTemplate(templates[0]);
+    }
   }, [user]);
 
   const loadSettings = async () => {
     try {
       if (user) {
-        // Load from Supabase for authenticated users
         const { data, error } = await supabase
           .from('user_settings')
           .select('*')
@@ -73,7 +98,6 @@ export default function AnalyzeScreen() {
           });
         }
       } else {
-        // Load from local storage for guest users
         const [deepseek, gemini, provider] = await Promise.all([
           AsyncStorage.getItem(LOCAL_STORAGE_KEYS.DEEPSEEK_API_KEY),
           AsyncStorage.getItem(LOCAL_STORAGE_KEYS.GEMINI_API_KEY),
@@ -94,7 +118,7 @@ export default function AnalyzeScreen() {
   const pickDocument = async () => {
     try {
       const result = await DocumentPicker.getDocumentAsync({
-        type: ['text/plain', 'text/markdown', 'application/pdf'],
+        type: ['text/plain', 'text/markdown', 'application/pdf', 'text/csv', 'application/json'],
         copyToCacheDirectory: true,
       });
 
@@ -107,12 +131,15 @@ export default function AnalyzeScreen() {
           title: asset.name,
           content,
           fileType: asset.mimeType?.includes('pdf') ? 'pdf' : 
-                   asset.mimeType?.includes('markdown') ? 'md' : 'txt',
+                   asset.mimeType?.includes('markdown') ? 'md' :
+                   asset.mimeType?.includes('csv') ? 'csv' :
+                   asset.mimeType?.includes('json') ? 'json' : 'txt',
           fileSize: asset.size || 0,
         };
 
         setDocument(doc);
-        setAnalysis(null);
+        setAnalysisResult(null);
+        setAnalysisProgress(null);
       }
     } catch (error) {
       Alert.alert('Error', 'Failed to pick document');
@@ -120,9 +147,8 @@ export default function AnalyzeScreen() {
   };
 
   const startAnalysis = async () => {
-    if (!document) return;
+    if (!document || !selectedTemplate) return;
 
-    // Get API key from settings or environment
     const apiKey = apiKeys[selectedProvider] || 
       (selectedProvider === 'deepseek' 
         ? process.env.EXPO_PUBLIC_DEEPSEEK_API_KEY
@@ -140,16 +166,41 @@ export default function AnalyzeScreen() {
       return;
     }
 
-    try {
-      const analysisId = Math.random().toString(36).substr(2, 9);
-      
-      setAnalysis({
-        id: analysisId,
-        status: 'processing',
-        progress: 0,
-      });
+    setIsAnalyzing(true);
+    setAnalysisProgress({ progress: 0, message: 'Starting analysis...', stage: 'init' });
 
-      // Save document to database if user is logged in
+    try {
+      const metadata: DocumentMetadata = {
+        title: document.title,
+        fileType: document.fileType,
+        fileSize: document.fileSize,
+        wordCount: 0,
+        createdAt: new Date(),
+      };
+
+      const configuration: AnalysisConfiguration = {
+        template: selectedTemplate,
+        depth: analysisConfig.depth || 'standard',
+        focus: analysisConfig.focus || [],
+        excludeTopics: analysisConfig.excludeTopics,
+        outputLanguage: analysisConfig.outputLanguage || 'en',
+        includeVisualization: analysisConfig.includeVisualization || false,
+      };
+
+      const result = await analysisFramework.analyzeDocument(
+        document.content,
+        metadata,
+        configuration,
+        apiKey,
+        selectedProvider,
+        (progress) => {
+          setAnalysisProgress(progress);
+        }
+      );
+
+      setAnalysisResult(result);
+
+      // Save to database if user is logged in
       if (user) {
         await supabase
           .from('documents')
@@ -164,118 +215,352 @@ export default function AnalyzeScreen() {
         await supabase
           .from('analyses')
           .insert({
-            id: analysisId,
             user_id: user.id,
-            document_id: document.id,
+            document_id: result.documentId,
             ai_provider: selectedProvider,
-            status: 'processing',
-          });
-      }
-
-      // Perform AI analysis
-      const result = await aiService.analyzeDocument(
-        {
-          content: document.content,
-          provider: selectedProvider,
-          apiKey,
-        },
-        (progress) => {
-          setAnalysis(prev => prev ? {
-            ...prev,
-            progress: progress.progress,
-          } : null);
-        }
-      );
-
-      // Update analysis with results
-      setAnalysis(prev => prev ? {
-        ...prev,
-        status: 'completed',
-        progress: 100,
-        sections: result,
-      } : null);
-
-      // Save analysis sections to database if user is logged in
-      if (user) {
-        const sections = [
-          { section_type: 'summary', title: 'Executive Summary', content: result.summary },
-          { section_type: 'insights', title: 'Key Insights', content: result.insights },
-          { section_type: 'recommendations', title: 'Recommendations', content: result.recommendations },
-          { section_type: 'technical', title: 'Technical Details', content: result.technical },
-          { section_type: 'full_report', title: 'Full Report', content: result.fullReport },
-        ];
-
-        await supabase
-          .from('analysis_sections')
-          .insert(sections.map(section => ({
-            analysis_id: analysisId,
-            ...section,
-          })));
-
-        await supabase
-          .from('analyses')
-          .update({ 
             status: 'completed',
             progress: 100,
             completed_at: new Date().toISOString(),
-          })
-          .eq('id', analysisId);
+          });
       }
 
     } catch (error) {
-      setAnalysis(prev => prev ? {
-        ...prev,
-        status: 'failed',
-        progress: 0,
-      } : null);
-      
-      Alert.alert('Error', 'Analysis failed. Please try again.');
+      Alert.alert('Error', `Analysis failed: ${error instanceof Error ? error.message : 'Unknown error'}`);
+      setAnalysisProgress({ progress: 0, message: 'Analysis failed', stage: 'error' });
+    } finally {
+      setIsAnalyzing(false);
     }
   };
 
-  const renderAnalysisResults = () => {
-    if (!analysis?.sections) return null;
+  const templates = analysisFramework.getTemplates();
+  const hasApiKey = apiKeys[selectedProvider] || 
+    (selectedProvider === 'deepseek' 
+      ? process.env.EXPO_PUBLIC_DEEPSEEK_API_KEY
+      : process.env.EXPO_PUBLIC_GEMINI_API_KEY);
+
+  const renderTemplateSelector = () => (
+    <GlassCard style={styles.templateCard}>
+      <Text style={[styles.sectionTitle, { color: colors.onSurface }]}>
+        Analysis Template
+      </Text>
+      <Text style={[styles.sectionDescription, { color: colors.onSurfaceVariant }]}>
+        Choose the type of analysis that best fits your document
+      </Text>
+      
+      <ScrollView horizontal showsHorizontalScrollIndicator={false} style={styles.templateScroll}>
+        {templates.map((template) => (
+          <TouchableOpacity
+            key={template.id}
+            style={[
+              styles.templateItem,
+              {
+                backgroundColor: selectedTemplate?.id === template.id 
+                  ? colors.primaryContainer 
+                  : colors.surfaceVariant,
+                borderColor: selectedTemplate?.id === template.id 
+                  ? colors.primary 
+                  : colors.outline,
+              }
+            ]}
+            onPress={() => setSelectedTemplate(template)}
+          >
+            <View style={styles.templateHeader}>
+              <Text style={[
+                styles.templateName,
+                { 
+                  color: selectedTemplate?.id === template.id 
+                    ? colors.onPrimaryContainer 
+                    : colors.onSurface 
+                }
+              ]}>
+                {template.name}
+              </Text>
+              <View style={[
+                styles.categoryBadge,
+                { backgroundColor: colors.secondary + '20' }
+              ]}>
+                <Text style={[styles.categoryText, { color: colors.secondary }]}>
+                  {template.category}
+                </Text>
+              </View>
+            </View>
+            <Text style={[
+              styles.templateDescription,
+              { 
+                color: selectedTemplate?.id === template.id 
+                  ? colors.onPrimaryContainer 
+                  : colors.onSurfaceVariant 
+              }
+            ]}>
+              {template.description}
+            </Text>
+            <View style={styles.templateFooter}>
+              <View style={styles.timeEstimate}>
+                <Clock size={14} color={colors.onSurfaceVariant} />
+                <Text style={[styles.timeText, { color: colors.onSurfaceVariant }]}>
+                  ~{Math.round(template.estimatedTime / 60)}min
+                </Text>
+              </View>
+            </View>
+          </TouchableOpacity>
+        ))}
+      </ScrollView>
+    </GlassCard>
+  );
+
+  const renderAnalysisConfig = () => (
+    <GlassCard style={styles.configCard}>
+      <Text style={[styles.sectionTitle, { color: colors.onSurface }]}>
+        Analysis Configuration
+      </Text>
+      
+      {/* Analysis Depth */}
+      <View style={styles.configSection}>
+        <Text style={[styles.configLabel, { color: colors.onSurfaceVariant }]}>
+          Analysis Depth
+        </Text>
+        <View style={styles.depthButtons}>
+          {(['quick', 'standard', 'comprehensive', 'expert'] as const).map((depth) => (
+            <TouchableOpacity
+              key={depth}
+              style={[
+                styles.depthButton,
+                {
+                  backgroundColor: analysisConfig.depth === depth 
+                    ? colors.primary 
+                    : colors.surfaceVariant,
+                }
+              ]}
+              onPress={() => setAnalysisConfig(prev => ({ ...prev, depth }))}
+            >
+              <Text style={[
+                styles.depthButtonText,
+                { 
+                  color: analysisConfig.depth === depth 
+                    ? colors.onPrimary 
+                    : colors.onSurfaceVariant 
+                }
+              ]}>
+                {depth.charAt(0).toUpperCase() + depth.slice(1)}
+              </Text>
+            </TouchableOpacity>
+          ))}
+        </View>
+      </View>
+
+      {/* Visualization Toggle */}
+      <View style={styles.configSection}>
+        <TouchableOpacity
+          style={styles.toggleRow}
+          onPress={() => setAnalysisConfig(prev => ({ 
+            ...prev, 
+            includeVisualization: !prev.includeVisualization 
+          }))}
+        >
+          <View style={styles.toggleLeft}>
+            <BarChart3 size={20} color={colors.primary} />
+            <Text style={[styles.toggleLabel, { color: colors.onSurface }]}>
+              Include Visualizations
+            </Text>
+          </View>
+          <View style={[
+            styles.toggle,
+            { 
+              backgroundColor: analysisConfig.includeVisualization 
+                ? colors.primary 
+                : colors.outline 
+            }
+          ]}>
+            <View style={[
+              styles.toggleThumb,
+              {
+                backgroundColor: colors.surface,
+                transform: [{ 
+                  translateX: analysisConfig.includeVisualization ? 20 : 2 
+                }],
+              }
+            ]} />
+          </View>
+        </TouchableOpacity>
+      </View>
+    </GlassCard>
+  );
+
+  const renderAnalysisProgress = () => {
+    if (!analysisProgress) return null;
 
     return (
-      <GlassCard style={styles.resultsCard}>
-        <Text style={[styles.sectionTitle, { color: colors.onSurface }]}>
-          Analysis Results
+      <GlassCard style={styles.progressCard}>
+        <View style={styles.progressHeader}>
+          <Brain size={24} color={colors.primary} />
+          <Text style={[styles.progressTitle, { color: colors.onSurface }]}>
+            Analyzing Document
+          </Text>
+        </View>
+        
+        <Text style={[styles.progressMessage, { color: colors.onSurfaceVariant }]}>
+          {analysisProgress.message}
         </Text>
         
-        <View style={styles.resultSection}>
-          <Text style={[styles.resultTitle, { color: colors.primary }]}>
-            Executive Summary
-          </Text>
-          <Text style={[styles.resultContent, { color: colors.onSurfaceVariant }]}>
-            {analysis.sections.summary}
-          </Text>
+        <View style={[styles.progressBar, { backgroundColor: colors.surfaceVariant }]}>
+          <View 
+            style={[
+              styles.progressFill, 
+              { 
+                backgroundColor: colors.primary,
+                width: `${analysisProgress.progress}%`,
+              }
+            ]} 
+          />
         </View>
-
-        <View style={styles.resultSection}>
-          <Text style={[styles.resultTitle, { color: colors.primary }]}>
-            Key Insights
-          </Text>
-          <Text style={[styles.resultContent, { color: colors.onSurfaceVariant }]}>
-            {analysis.sections.insights}
-          </Text>
-        </View>
-
-        <View style={styles.resultSection}>
-          <Text style={[styles.resultTitle, { color: colors.primary }]}>
-            Recommendations
-          </Text>
-          <Text style={[styles.resultContent, { color: colors.onSurfaceVariant }]}>
-            {analysis.sections.recommendations}
+        
+        <Text style={[styles.progressPercent, { color: colors.onSurfaceVariant }]}>
+          {Math.round(analysisProgress.progress)}% Complete
+        </Text>
+        
+        <View style={styles.stageIndicator}>
+          <Text style={[styles.stageText, { color: colors.onSurfaceVariant }]}>
+            Stage: {analysisProgress.stage.replace('_', ' ')}
           </Text>
         </View>
       </GlassCard>
     );
   };
 
-  const hasApiKey = apiKeys[selectedProvider] || 
-    (selectedProvider === 'deepseek' 
-      ? process.env.EXPO_PUBLIC_DEEPSEEK_API_KEY
-      : process.env.EXPO_PUBLIC_GEMINI_API_KEY);
+  const renderAnalysisResults = () => {
+    if (!analysisResult) return null;
+
+    return (
+      <View style={styles.resultsContainer}>
+        {/* Results Header */}
+        <GlassCard style={styles.resultsHeader}>
+          <View style={styles.resultsHeaderContent}>
+            <CheckCircle size={32} color={colors.primary} />
+            <View style={styles.resultsHeaderText}>
+              <Text style={[styles.resultsTitle, { color: colors.onSurface }]}>
+                Analysis Complete
+              </Text>
+              <Text style={[styles.resultsSubtitle, { color: colors.onSurfaceVariant }]}>
+                {analysisResult.word_count} words analyzed in {Math.round(analysisResult.processing_time / 1000)}s
+              </Text>
+            </View>
+            <View style={styles.confidenceScore}>
+              <Text style={[styles.confidenceLabel, { color: colors.onSurfaceVariant }]}>
+                Confidence
+              </Text>
+              <Text style={[styles.confidenceValue, { color: colors.primary }]}>
+                {Math.round(analysisResult.confidence_score * 100)}%
+              </Text>
+            </View>
+          </View>
+        </GlassCard>
+
+        {/* Analysis Sections */}
+        {Object.entries(analysisResult.sections).map(([key, section]) => (
+          <GlassCard key={key} style={styles.sectionCard}>
+            <Text style={[styles.sectionTitle, { color: colors.primary }]}>
+              {section.title}
+            </Text>
+            <Text style={[styles.sectionContent, { color: colors.onSurfaceVariant }]}>
+              {section.content}
+            </Text>
+            {section.key_points && section.key_points.length > 0 && (
+              <View style={styles.keyPoints}>
+                <Text style={[styles.keyPointsTitle, { color: colors.onSurface }]}>
+                  Key Points:
+                </Text>
+                {section.key_points.map((point, index) => (
+                  <Text key={index} style={[styles.keyPoint, { color: colors.onSurfaceVariant }]}>
+                    • {point}
+                  </Text>
+                ))}
+              </View>
+            )}
+          </GlassCard>
+        ))}
+
+        {/* Sentiment Analysis */}
+        {analysisResult.sentiment_analysis && (
+          <GlassCard style={styles.sentimentCard}>
+            <Text style={[styles.sectionTitle, { color: colors.primary }]}>
+              Sentiment Analysis
+            </Text>
+            <View style={styles.sentimentContent}>
+              <View style={styles.sentimentOverall}>
+                <Text style={[styles.sentimentLabel, { color: colors.onSurface }]}>
+                  Overall Sentiment:
+                </Text>
+                <Text style={[
+                  styles.sentimentValue,
+                  { 
+                    color: analysisResult.sentiment_analysis.overall_sentiment === 'positive' 
+                      ? colors.primary 
+                      : analysisResult.sentiment_analysis.overall_sentiment === 'negative'
+                      ? colors.error
+                      : colors.onSurfaceVariant
+                  }
+                ]}>
+                  {analysisResult.sentiment_analysis.overall_sentiment.toUpperCase()}
+                </Text>
+              </View>
+              <View style={styles.sentimentDistribution}>
+                <View style={styles.sentimentBar}>
+                  <View 
+                    style={[
+                      styles.sentimentSegment,
+                      { 
+                        backgroundColor: colors.primary,
+                        flex: analysisResult.sentiment_analysis.sentiment_distribution.positive,
+                      }
+                    ]} 
+                  />
+                  <View 
+                    style={[
+                      styles.sentimentSegment,
+                      { 
+                        backgroundColor: colors.surfaceVariant,
+                        flex: analysisResult.sentiment_analysis.sentiment_distribution.neutral,
+                      }
+                    ]} 
+                  />
+                  <View 
+                    style={[
+                      styles.sentimentSegment,
+                      { 
+                        backgroundColor: colors.error,
+                        flex: analysisResult.sentiment_analysis.sentiment_distribution.negative,
+                      }
+                    ]} 
+                  />
+                </View>
+              </View>
+            </View>
+          </GlassCard>
+        )}
+
+        {/* Key Entities */}
+        {analysisResult.key_entities && analysisResult.key_entities.length > 0 && (
+          <GlassCard style={styles.entitiesCard}>
+            <Text style={[styles.sectionTitle, { color: colors.primary }]}>
+              Key Entities
+            </Text>
+            <View style={styles.entitiesGrid}>
+              {analysisResult.key_entities.slice(0, 10).map((entity, index) => (
+                <View key={index} style={[styles.entityItem, { backgroundColor: colors.surfaceVariant }]}>
+                  <Text style={[styles.entityText, { color: colors.onSurface }]}>
+                    {entity.text}
+                  </Text>
+                  <Text style={[styles.entityType, { color: colors.onSurfaceVariant }]}>
+                    {entity.type}
+                  </Text>
+                </View>
+              ))}
+            </View>
+          </GlassCard>
+        )}
+      </View>
+    );
+  };
 
   return (
     <SafeAreaView style={{ flex: 1, backgroundColor: colors.background }}>
@@ -287,19 +572,19 @@ export default function AnalyzeScreen() {
       <ScrollView style={styles.container} showsVerticalScrollIndicator={false}>
         {/* Header */}
         <View style={styles.header}>
-          <FileText size={32} color={colors.primary} />
+          <Brain size={32} color={colors.primary} />
           <Text style={[styles.title, { color: colors.onBackground }]}>
-            Document Analysis
+            Advanced Document Analysis
           </Text>
           <Text style={[styles.subtitle, { color: colors.onSurfaceVariant }]}>
-            Upload and analyze your documents with AI
+            Comprehensive AI-powered document insights
           </Text>
         </View>
 
         {/* API Key Warning */}
         {!hasApiKey && (
           <GlassCard style={styles.warningCard}>
-            <Settings size={24} color={colors.tertiary} />
+            <AlertCircle size={24} color={colors.tertiary} />
             <Text style={[styles.warningTitle, { color: colors.onSurface }]}>
               API Key Required
             </Text>
@@ -325,7 +610,7 @@ export default function AnalyzeScreen() {
             <View style={styles.uploadArea}>
               <Upload size={48} color={colors.onSurfaceVariant} />
               <Text style={[styles.uploadText, { color: colors.onSurfaceVariant }]}>
-                Upload PDF, TXT, or Markdown files
+                Upload PDF, TXT, Markdown, CSV, or JSON files
               </Text>
               <Button
                 title="Choose File"
@@ -354,8 +639,14 @@ export default function AnalyzeScreen() {
           )}
         </GlassCard>
 
+        {/* Template Selection */}
+        {document && renderTemplateSelector()}
+
+        {/* Analysis Configuration */}
+        {document && selectedTemplate && renderAnalysisConfig()}
+
         {/* AI Provider Selection */}
-        {document && (
+        {document && selectedTemplate && (
           <GlassCard style={styles.providerCard}>
             <Text style={[styles.sectionTitle, { color: colors.onSurface }]}>
               AI Provider
@@ -378,17 +669,17 @@ export default function AnalyzeScreen() {
         )}
 
         {/* Analysis Button */}
-        {document && !analysis && hasApiKey && (
+        {document && selectedTemplate && !isAnalyzing && !analysisResult && hasApiKey && (
           <GlassCard style={styles.analyzeCard}>
-            <Brain size={32} color={colors.primary} />
+            <Target size={32} color={colors.primary} />
             <Text style={[styles.analyzeTitle, { color: colors.onSurface }]}>
               Ready to Analyze
             </Text>
             <Text style={[styles.analyzeDescription, { color: colors.onSurfaceVariant }]}>
-              Start AI analysis of your document with {selectedProvider === 'deepseek' ? 'DeepSeek AI' : 'Google Gemini'}
+              Start comprehensive AI analysis using {selectedTemplate.name} template with {selectedProvider === 'deepseek' ? 'DeepSeek AI' : 'Google Gemini'}
             </Text>
             <Button
-              title="Start Analysis"
+              title="Start Advanced Analysis"
               onPress={startAnalysis}
               size="large"
               style={styles.analyzeButton}
@@ -397,48 +688,10 @@ export default function AnalyzeScreen() {
         )}
 
         {/* Analysis Progress */}
-        {analysis && analysis.status === 'processing' && (
-          <GlassCard style={styles.progressCard}>
-            <Text style={[styles.sectionTitle, { color: colors.onSurface }]}>
-              Analyzing Document
-            </Text>
-            <View style={[styles.progressBar, { backgroundColor: colors.surfaceVariant }]}>
-              <View 
-                style={[
-                  styles.progressFill, 
-                  { 
-                    backgroundColor: colors.primary,
-                    width: `${analysis.progress}%`,
-                  }
-                ]} 
-              />
-            </View>
-            <Text style={[styles.progressText, { color: colors.onSurfaceVariant }]}>
-              {analysis.progress}% Complete
-            </Text>
-          </GlassCard>
-        )}
+        {isAnalyzing && renderAnalysisProgress()}
 
         {/* Analysis Results */}
-        {analysis?.status === 'completed' && renderAnalysisResults()}
-
-        {/* Analysis Failed */}
-        {analysis?.status === 'failed' && (
-          <GlassCard style={styles.errorCard}>
-            <Text style={[styles.errorTitle, { color: colors.error }]}>
-              Analysis Failed
-            </Text>
-            <Text style={[styles.errorText, { color: colors.onSurfaceVariant }]}>
-              Something went wrong during the analysis. Please check your API key and try again.
-            </Text>
-            <Button
-              title="Try Again"
-              onPress={startAnalysis}
-              variant="outlined"
-              style={styles.retryButton}
-            />
-          </GlassCard>
-        )}
+        {analysisResult && renderAnalysisResults()}
       </ScrollView>
     </SafeAreaView>
   );
@@ -458,6 +711,7 @@ const styles = StyleSheet.create({
     fontFamily: 'Inter-Bold',
     marginTop: spacing.sm,
     marginBottom: spacing.xs,
+    textAlign: 'center',
   },
   subtitle: {
     fontSize: 16,
@@ -488,6 +742,12 @@ const styles = StyleSheet.create({
   sectionTitle: {
     fontSize: 18,
     fontFamily: 'Inter-SemiBold',
+    marginBottom: spacing.sm,
+  },
+  sectionDescription: {
+    fontSize: 14,
+    fontFamily: 'Inter-Regular',
+    lineHeight: 20,
     marginBottom: spacing.md,
   },
   uploadCard: {
@@ -524,6 +784,112 @@ const styles = StyleSheet.create({
     fontFamily: 'Inter-Regular',
     marginTop: spacing.xs,
   },
+  templateCard: {
+    marginBottom: spacing.lg,
+  },
+  templateScroll: {
+    marginTop: spacing.sm,
+  },
+  templateItem: {
+    width: 280,
+    padding: spacing.md,
+    marginRight: spacing.md,
+    borderRadius: 12,
+    borderWidth: 2,
+  },
+  templateHeader: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'flex-start',
+    marginBottom: spacing.sm,
+  },
+  templateName: {
+    fontSize: 16,
+    fontFamily: 'Inter-SemiBold',
+    flex: 1,
+    marginRight: spacing.sm,
+  },
+  categoryBadge: {
+    paddingHorizontal: spacing.sm,
+    paddingVertical: spacing.xs,
+    borderRadius: 8,
+  },
+  categoryText: {
+    fontSize: 12,
+    fontFamily: 'Inter-Medium',
+  },
+  templateDescription: {
+    fontSize: 14,
+    fontFamily: 'Inter-Regular',
+    lineHeight: 20,
+    marginBottom: spacing.sm,
+  },
+  templateFooter: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+  },
+  timeEstimate: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: spacing.xs,
+  },
+  timeText: {
+    fontSize: 12,
+    fontFamily: 'Inter-Regular',
+  },
+  configCard: {
+    marginBottom: spacing.lg,
+  },
+  configSection: {
+    marginBottom: spacing.lg,
+  },
+  configLabel: {
+    fontSize: 14,
+    fontFamily: 'Inter-Medium',
+    marginBottom: spacing.sm,
+  },
+  depthButtons: {
+    flexDirection: 'row',
+    gap: spacing.sm,
+  },
+  depthButton: {
+    flex: 1,
+    paddingVertical: spacing.sm,
+    paddingHorizontal: spacing.md,
+    borderRadius: 8,
+    alignItems: 'center',
+  },
+  depthButtonText: {
+    fontSize: 12,
+    fontFamily: 'Inter-Medium',
+  },
+  toggleRow: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+  },
+  toggleLeft: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: spacing.sm,
+  },
+  toggleLabel: {
+    fontSize: 16,
+    fontFamily: 'Inter-Medium',
+  },
+  toggle: {
+    width: 44,
+    height: 24,
+    borderRadius: 12,
+    justifyContent: 'center',
+    paddingHorizontal: 2,
+  },
+  toggleThumb: {
+    width: 20,
+    height: 20,
+    borderRadius: 10,
+  },
   providerCard: {
     marginBottom: spacing.lg,
   },
@@ -558,6 +924,21 @@ const styles = StyleSheet.create({
   progressCard: {
     marginBottom: spacing.lg,
   },
+  progressHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: spacing.sm,
+    marginBottom: spacing.md,
+  },
+  progressTitle: {
+    fontSize: 18,
+    fontFamily: 'Inter-SemiBold',
+  },
+  progressMessage: {
+    fontSize: 14,
+    fontFamily: 'Inter-Regular',
+    marginBottom: spacing.md,
+  },
   progressBar: {
     height: 8,
     borderRadius: 4,
@@ -568,45 +949,130 @@ const styles = StyleSheet.create({
     height: '100%',
     borderRadius: 4,
   },
-  progressText: {
+  progressPercent: {
     fontSize: 14,
     fontFamily: 'Inter-Medium',
     textAlign: 'center',
-  },
-  resultsCard: {
-    marginBottom: spacing.lg,
-  },
-  resultSection: {
-    marginBottom: spacing.lg,
-  },
-  resultTitle: {
-    fontSize: 16,
-    fontFamily: 'Inter-SemiBold',
     marginBottom: spacing.sm,
   },
-  resultContent: {
+  stageIndicator: {
+    alignItems: 'center',
+  },
+  stageText: {
+    fontSize: 12,
+    fontFamily: 'Inter-Regular',
+    textTransform: 'capitalize',
+  },
+  resultsContainer: {
+    gap: spacing.lg,
+    marginBottom: spacing.xl,
+  },
+  resultsHeader: {
+    padding: spacing.lg,
+  },
+  resultsHeaderContent: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: spacing.md,
+  },
+  resultsHeaderText: {
+    flex: 1,
+  },
+  resultsTitle: {
+    fontSize: 20,
+    fontFamily: 'Inter-SemiBold',
+    marginBottom: spacing.xs,
+  },
+  resultsSubtitle: {
+    fontSize: 14,
+    fontFamily: 'Inter-Regular',
+  },
+  confidenceScore: {
+    alignItems: 'center',
+  },
+  confidenceLabel: {
+    fontSize: 12,
+    fontFamily: 'Inter-Regular',
+  },
+  confidenceValue: {
+    fontSize: 18,
+    fontFamily: 'Inter-Bold',
+  },
+  sectionCard: {
+    padding: spacing.lg,
+  },
+  sectionContent: {
     fontSize: 14,
     fontFamily: 'Inter-Regular',
     lineHeight: 20,
+    marginBottom: spacing.md,
   },
-  errorCard: {
-    alignItems: 'center',
-    padding: spacing.xl,
-    marginBottom: spacing.lg,
+  keyPoints: {
+    marginTop: spacing.sm,
   },
-  errorTitle: {
-    fontSize: 18,
+  keyPointsTitle: {
+    fontSize: 14,
     fontFamily: 'Inter-SemiBold',
     marginBottom: spacing.sm,
   },
-  errorText: {
-    fontSize: 16,
+  keyPoint: {
+    fontSize: 12,
     fontFamily: 'Inter-Regular',
-    textAlign: 'center',
-    marginBottom: spacing.lg,
-    lineHeight: 24,
+    lineHeight: 18,
+    marginBottom: spacing.xs,
   },
-  retryButton: {
+  sentimentCard: {
+    padding: spacing.lg,
+  },
+  sentimentContent: {
+    gap: spacing.md,
+  },
+  sentimentOverall: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+  },
+  sentimentLabel: {
+    fontSize: 14,
+    fontFamily: 'Inter-Medium',
+  },
+  sentimentValue: {
+    fontSize: 16,
+    fontFamily: 'Inter-Bold',
+  },
+  sentimentDistribution: {
     marginTop: spacing.sm,
+  },
+  sentimentBar: {
+    flexDirection: 'row',
+    height: 8,
+    borderRadius: 4,
+    overflow: 'hidden',
+  },
+  sentimentSegment: {
+    height: '100%',
+  },
+  entitiesCard: {
+    padding: spacing.lg,
+  },
+  entitiesGrid: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    gap: spacing.sm,
+  },
+  entityItem: {
+    paddingHorizontal: spacing.sm,
+    paddingVertical: spacing.xs,
+    borderRadius: 8,
+    alignItems: 'center',
+  },
+  entityText: {
+    fontSize: 12,
+    fontFamily: 'Inter-SemiBold',
+  },
+  entityType: {
+    fontSize: 10,
+    fontFamily: 'Inter-Regular',
+    textTransform: 'uppercase',
   },
 });
