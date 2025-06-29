@@ -525,7 +525,25 @@ export class DocumentAnalysisFramework {
     });
 
     if (!response.ok) {
-      throw new Error(`Gemini API error: ${response.statusText}`);
+      let errorMessage = 'Unknown error';
+      
+      try {
+        const errorData = await response.json();
+        if (errorData.error && errorData.error.message) {
+          errorMessage = errorData.error.message;
+        } else if (errorData.message) {
+          errorMessage = errorData.message;
+        } else if (response.statusText) {
+          errorMessage = response.statusText;
+        } else {
+          errorMessage = `HTTP ${response.status}`;
+        }
+      } catch {
+        // If JSON parsing fails, use status text or status code
+        errorMessage = response.statusText || `HTTP ${response.status}`;
+      }
+      
+      throw new Error(`Gemini API error: ${errorMessage}`);
     }
 
     const data = await response.json();
