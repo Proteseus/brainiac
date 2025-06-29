@@ -1,6 +1,6 @@
 import React from 'react';
 import { View, Text, StyleSheet } from 'react-native';
-import { Brain, CheckCircle, AlertCircle, Clock } from 'lucide-react-native';
+import { Brain, CircleCheck as CheckCircle, CircleAlert as AlertCircle, Clock } from 'lucide-react-native';
 import { useTheme, spacing, borderRadius } from '@/constants/Theme';
 
 interface AnalysisProgressProps {

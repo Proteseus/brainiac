@@ -1,6 +1,6 @@
 import React from 'react';
 import { View, Text, TouchableOpacity, StyleSheet } from 'react-native';
-import { Clock, Target, BarChart3, FileText, Briefcase, GraduationCap, Scale, Wrench, DollarSign } from 'lucide-react-native';
+import { Clock, Target, ChartBar as BarChart3, FileText, Briefcase, GraduationCap, Scale, Wrench, DollarSign } from 'lucide-react-native';
 import { useTheme, spacing, borderRadius } from '@/constants/Theme';
 import { AnalysisTemplate } from '@/services/analysisFramework';
 

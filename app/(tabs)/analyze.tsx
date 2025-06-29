@@ -4,18 +4,7 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 import * as DocumentPicker from 'expo-document-picker';
 import * as FileSystem from 'expo-file-system';
 import { LinearGradient } from 'expo-linear-gradient';
-import { 
-  Upload, 
-  FileText, 
-  Settings, 
-  Brain, 
-  Zap, 
-  Target, 
-  BarChart3,
-  Clock,
-  CheckCircle,
-  AlertCircle
-} from 'lucide-react-native';
+import { Upload, FileText, Settings, Brain, Zap, Target, ChartBar as BarChart3, Clock, CircleCheck as CheckCircle, CircleAlert as AlertCircle } from 'lucide-react-native';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { useRouter } from 'expo-router';
 import { useTheme, spacing } from '@/constants/Theme';
