@@ -1,6 +1,6 @@
 import React from 'react';
 import { View, Text, StyleSheet, Dimensions, ScrollView, TouchableOpacity } from 'react-native';
-import { TrendingUp, BarChart3, PieChart, Activity, Download, Maximize2 } from 'lucide-react-native';
+import { TrendingUp, ChartBar as BarChart3, ChartPie as PieChart, Activity, Download, Maximize2 } from 'lucide-react-native';
 import { useTheme, spacing, borderRadius } from '@/constants/Theme';
 
 interface ChartData {
