@@ -10,6 +10,8 @@ import { useRouter } from 'expo-router';
 import { useTheme, spacing } from '@/constants/Theme';
 import { GlassCard } from '@/components/ui/GlassCard';
 import { Button } from '@/components/ui/Button';
+import { AnalysisProgress } from '@/components/ui/AnalysisProgress';
+import { AnalysisResultsRenderer } from '@/components/ui/AnalysisResultsRenderer';
 import { useAuth } from '@/hooks/useAuth';
 import { supabase } from '@/lib/supabase';
 import { 
@@ -28,7 +30,7 @@ interface Document {
   fileSize: number;
 }
 
-interface AnalysisProgress {
+interface AnalysisProgressState {
   progress: number;
   message: string;
   stage: string;
@@ -53,7 +55,7 @@ export default function AnalyzeScreen() {
     includeVisualization: true,
   });
   const [analysisResult, setAnalysisResult] = useState<AnalysisResult | null>(null);
-  const [analysisProgress, setAnalysisProgress] = useState<AnalysisProgress | null>(null);
+  const [analysisProgress, setAnalysisProgress] = useState<AnalysisProgressState | null>(null);
   const [isAnalyzing, setIsAnalyzing] = useState(false);
   const [selectedProvider, setSelectedProvider] = useState<'deepseek' | 'gemini'>('deepseek');
   const [apiKeys, setApiKeys] = useState({
@@ -375,181 +377,39 @@ export default function AnalyzeScreen() {
     </GlassCard>
   );
 
-  const renderAnalysisProgress = () => {
-    if (!analysisProgress) return null;
-
+  // If we have analysis results, show them
+  if (analysisResult) {
     return (
-      <GlassCard style={styles.progressCard}>
-        <View style={styles.progressHeader}>
-          <Brain size={24} color={colors.primary} />
-          <Text style={[styles.progressTitle, { color: colors.onSurface }]}>
-            Analyzing Document
-          </Text>
-        </View>
+      <SafeAreaView style={{ flex: 1, backgroundColor: colors.background }}>
+        <LinearGradient
+          colors={[colors.secondary + '20', colors.background]}
+          style={StyleSheet.absoluteFill}
+        />
         
-        <Text style={[styles.progressMessage, { color: colors.onSurfaceVariant }]}>
-          {analysisProgress.message}
-        </Text>
-        
-        <View style={[styles.progressBar, { backgroundColor: colors.surfaceVariant }]}>
-          <View 
-            style={[
-              styles.progressFill, 
-              { 
-                backgroundColor: colors.primary,
-                width: `${analysisProgress.progress}%`,
-              }
-            ]} 
+        <View style={styles.container}>
+          <View style={styles.resultsHeader}>
+            <TouchableOpacity
+              style={[styles.backButton, { backgroundColor: colors.primaryContainer }]}
+              onPress={() => {
+                setAnalysisResult(null);
+                setAnalysisProgress(null);
+              }}
+            >
+              <Text style={[styles.backButtonText, { color: colors.onPrimaryContainer }]}>
+                ← New Analysis
+              </Text>
+            </TouchableOpacity>
+          </View>
+          
+          <AnalysisResultsRenderer
+            result={analysisResult}
+            onExport={() => console.log('Export analysis')}
+            onShare={() => console.log('Share analysis')}
           />
         </View>
-        
-        <Text style={[styles.progressPercent, { color: colors.onSurfaceVariant }]}>
-          {Math.round(analysisProgress.progress)}% Complete
-        </Text>
-        
-        <View style={styles.stageIndicator}>
-          <Text style={[styles.stageText, { color: colors.onSurfaceVariant }]}>
-            Stage: {analysisProgress.stage.replace('_', ' ')}
-          </Text>
-        </View>
-      </GlassCard>
+      </SafeAreaView>
     );
-  };
-
-  const renderAnalysisResults = () => {
-    if (!analysisResult) return null;
-
-    return (
-      <View style={styles.resultsContainer}>
-        {/* Results Header */}
-        <GlassCard style={styles.resultsHeader}>
-          <View style={styles.resultsHeaderContent}>
-            <CheckCircle size={32} color={colors.primary} />
-            <View style={styles.resultsHeaderText}>
-              <Text style={[styles.resultsTitle, { color: colors.onSurface }]}>
-                Analysis Complete
-              </Text>
-              <Text style={[styles.resultsSubtitle, { color: colors.onSurfaceVariant }]}>
-                {analysisResult.word_count} words analyzed in {Math.round(analysisResult.processing_time / 1000)}s
-              </Text>
-            </View>
-            <View style={styles.confidenceScore}>
-              <Text style={[styles.confidenceLabel, { color: colors.onSurfaceVariant }]}>
-                Confidence
-              </Text>
-              <Text style={[styles.confidenceValue, { color: colors.primary }]}>
-                {Math.round(analysisResult.confidence_score * 100)}%
-              </Text>
-            </View>
-          </View>
-        </GlassCard>
-
-        {/* Analysis Sections */}
-        {Object.entries(analysisResult.sections).map(([key, section]) => (
-          <GlassCard key={key} style={styles.sectionCard}>
-            <Text style={[styles.sectionTitle, { color: colors.primary }]}>
-              {section.title}
-            </Text>
-            <Text style={[styles.sectionContent, { color: colors.onSurfaceVariant }]}>
-              {section.content}
-            </Text>
-            {section.key_points && section.key_points.length > 0 && (
-              <View style={styles.keyPoints}>
-                <Text style={[styles.keyPointsTitle, { color: colors.onSurface }]}>
-                  Key Points:
-                </Text>
-                {section.key_points.map((point, index) => (
-                  <Text key={index} style={[styles.keyPoint, { color: colors.onSurfaceVariant }]}>
-                    • {point}
-                  </Text>
-                ))}
-              </View>
-            )}
-          </GlassCard>
-        ))}
-
-        {/* Sentiment Analysis */}
-        {analysisResult.sentiment_analysis && (
-          <GlassCard style={styles.sentimentCard}>
-            <Text style={[styles.sectionTitle, { color: colors.primary }]}>
-              Sentiment Analysis
-            </Text>
-            <View style={styles.sentimentContent}>
-              <View style={styles.sentimentOverall}>
-                <Text style={[styles.sentimentLabel, { color: colors.onSurface }]}>
-                  Overall Sentiment:
-                </Text>
-                <Text style={[
-                  styles.sentimentValue,
-                  { 
-                    color: analysisResult.sentiment_analysis.overall_sentiment === 'positive' 
-                      ? colors.primary 
-                      : analysisResult.sentiment_analysis.overall_sentiment === 'negative'
-                      ? colors.error
-                      : colors.onSurfaceVariant
-                  }
-                ]}>
-                  {analysisResult.sentiment_analysis.overall_sentiment.toUpperCase()}
-                </Text>
-              </View>
-              <View style={styles.sentimentDistribution}>
-                <View style={styles.sentimentBar}>
-                  <View 
-                    style={[
-                      styles.sentimentSegment,
-                      { 
-                        backgroundColor: colors.primary,
-                        flex: analysisResult.sentiment_analysis.sentiment_distribution.positive,
-                      }
-                    ]} 
-                  />
-                  <View 
-                    style={[
-                      styles.sentimentSegment,
-                      { 
-                        backgroundColor: colors.surfaceVariant,
-                        flex: analysisResult.sentiment_analysis.sentiment_distribution.neutral,
-                      }
-                    ]} 
-                  />
-                  <View 
-                    style={[
-                      styles.sentimentSegment,
-                      { 
-                        backgroundColor: colors.error,
-                        flex: analysisResult.sentiment_analysis.sentiment_distribution.negative,
-                      }
-                    ]} 
-                  />
-                </View>
-              </View>
-            </View>
-          </GlassCard>
-        )}
-
-        {/* Key Entities */}
-        {analysisResult.key_entities && analysisResult.key_entities.length > 0 && (
-          <GlassCard style={styles.entitiesCard}>
-            <Text style={[styles.sectionTitle, { color: colors.primary }]}>
-              Key Entities
-            </Text>
-            <View style={styles.entitiesGrid}>
-              {analysisResult.key_entities.slice(0, 10).map((entity, index) => (
-                <View key={index} style={[styles.entityItem, { backgroundColor: colors.surfaceVariant }]}>
-                  <Text style={[styles.entityText, { color: colors.onSurface }]}>
-                    {entity.text}
-                  </Text>
-                  <Text style={[styles.entityType, { color: colors.onSurfaceVariant }]}>
-                    {entity.type}
-                  </Text>
-                </View>
-              ))}
-            </View>
-          </GlassCard>
-        )}
-      </View>
-    );
-  };
+  }
 
   return (
     <SafeAreaView style={{ flex: 1, backgroundColor: colors.background }}>
@@ -566,7 +426,7 @@ export default function AnalyzeScreen() {
             Advanced Document Analysis
           </Text>
           <Text style={[styles.subtitle, { color: colors.onSurfaceVariant }]}>
-            Comprehensive AI-powered document insights
+            Comprehensive AI-powered document insights with rich visualizations
           </Text>
         </View>
 
@@ -600,6 +460,9 @@ export default function AnalyzeScreen() {
               <Upload size={48} color={colors.onSurfaceVariant} />
               <Text style={[styles.uploadText, { color: colors.onSurfaceVariant }]}>
                 Upload PDF, TXT, Markdown, CSV, or JSON files
+              </Text>
+              <Text style={[styles.uploadSubtext, { color: colors.onSurfaceVariant }]}>
+                Advanced parsing supports tables, charts, and structured data
               </Text>
               <Button
                 title="Choose File"
@@ -667,6 +530,26 @@ export default function AnalyzeScreen() {
             <Text style={[styles.analyzeDescription, { color: colors.onSurfaceVariant }]}>
               Start comprehensive AI analysis using {selectedTemplate.name} template with {selectedProvider === 'deepseek' ? 'DeepSeek AI' : 'Google Gemini'}
             </Text>
+            <View style={styles.featuresList}>
+              <View style={styles.featureItem}>
+                <CheckCircle size={16} color={colors.primary} />
+                <Text style={[styles.featureText, { color: colors.onSurfaceVariant }]}>
+                  Rich markdown formatting
+                </Text>
+              </View>
+              <View style={styles.featureItem}>
+                <CheckCircle size={16} color={colors.primary} />
+                <Text style={[styles.featureText, { color: colors.onSurfaceVariant }]}>
+                  Interactive visualizations
+                </Text>
+              </View>
+              <View style={styles.featureItem}>
+                <CheckCircle size={16} color={colors.primary} />
+                <Text style={[styles.featureText, { color: colors.onSurfaceVariant }]}>
+                  Sentiment & entity analysis
+                </Text>
+              </View>
+            </View>
             <Button
               title="Start Advanced Analysis"
               onPress={startAnalysis}
@@ -677,10 +560,15 @@ export default function AnalyzeScreen() {
         )}
 
         {/* Analysis Progress */}
-        {isAnalyzing && renderAnalysisProgress()}
-
-        {/* Analysis Results */}
-        {analysisResult && renderAnalysisResults()}
+        {isAnalyzing && analysisProgress && (
+          <AnalysisProgress
+            progress={analysisProgress.progress}
+            message={analysisProgress.message}
+            stage={analysisProgress.stage}
+            isComplete={analysisProgress.progress === 100}
+            hasError={analysisProgress.stage === 'error'}
+          />
+        )}
       </ScrollView>
     </SafeAreaView>
   );
@@ -706,6 +594,7 @@ const styles = StyleSheet.create({
     fontSize: 16,
     fontFamily: 'Inter-Medium',
     textAlign: 'center',
+    lineHeight: 24,
   },
   warningCard: {
     alignItems: 'center',
@@ -750,8 +639,15 @@ const styles = StyleSheet.create({
     fontSize: 16,
     fontFamily: 'Inter-Regular',
     marginTop: spacing.md,
-    marginBottom: spacing.lg,
+    marginBottom: spacing.sm,
     textAlign: 'center',
+  },
+  uploadSubtext: {
+    fontSize: 14,
+    fontFamily: 'Inter-Regular',
+    textAlign: 'center',
+    marginBottom: spacing.lg,
+    opacity: 0.8,
   },
   uploadButton: {
     marginTop: spacing.sm,
@@ -907,161 +803,33 @@ const styles = StyleSheet.create({
     marginBottom: spacing.lg,
     lineHeight: 24,
   },
+  featuresList: {
+    gap: spacing.sm,
+    marginBottom: spacing.lg,
+  },
+  featureItem: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: spacing.sm,
+  },
+  featureText: {
+    fontSize: 14,
+    fontFamily: 'Inter-Regular',
+  },
   analyzeButton: {
     marginTop: spacing.sm,
   },
-  progressCard: {
-    marginBottom: spacing.lg,
-  },
-  progressHeader: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: spacing.sm,
-    marginBottom: spacing.md,
-  },
-  progressTitle: {
-    fontSize: 18,
-    fontFamily: 'Inter-SemiBold',
-  },
-  progressMessage: {
-    fontSize: 14,
-    fontFamily: 'Inter-Regular',
-    marginBottom: spacing.md,
-  },
-  progressBar: {
-    height: 8,
-    borderRadius: 4,
-    marginBottom: spacing.sm,
-    overflow: 'hidden',
-  },
-  progressFill: {
-    height: '100%',
-    borderRadius: 4,
-  },
-  progressPercent: {
-    fontSize: 14,
-    fontFamily: 'Inter-Medium',
-    textAlign: 'center',
-    marginBottom: spacing.sm,
-  },
-  stageIndicator: {
-    alignItems: 'center',
-  },
-  stageText: {
-    fontSize: 12,
-    fontFamily: 'Inter-Regular',
-    textTransform: 'capitalize',
-  },
-  resultsContainer: {
-    gap: spacing.lg,
-    marginBottom: spacing.xl,
-  },
   resultsHeader: {
-    padding: spacing.lg,
-  },
-  resultsHeaderContent: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: spacing.md,
-  },
-  resultsHeaderText: {
-    flex: 1,
-  },
-  resultsTitle: {
-    fontSize: 20,
-    fontFamily: 'Inter-SemiBold',
-    marginBottom: spacing.xs,
-  },
-  resultsSubtitle: {
-    fontSize: 14,
-    fontFamily: 'Inter-Regular',
-  },
-  confidenceScore: {
-    alignItems: 'center',
-  },
-  confidenceLabel: {
-    fontSize: 12,
-    fontFamily: 'Inter-Regular',
-  },
-  confidenceValue: {
-    fontSize: 18,
-    fontFamily: 'Inter-Bold',
-  },
-  sectionCard: {
-    padding: spacing.lg,
-  },
-  sectionContent: {
-    fontSize: 14,
-    fontFamily: 'Inter-Regular',
-    lineHeight: 20,
     marginBottom: spacing.md,
   },
-  keyPoints: {
-    marginTop: spacing.sm,
-  },
-  keyPointsTitle: {
-    fontSize: 14,
-    fontFamily: 'Inter-SemiBold',
-    marginBottom: spacing.sm,
-  },
-  keyPoint: {
-    fontSize: 12,
-    fontFamily: 'Inter-Regular',
-    lineHeight: 18,
-    marginBottom: spacing.xs,
-  },
-  sentimentCard: {
-    padding: spacing.lg,
-  },
-  sentimentContent: {
-    gap: spacing.md,
-  },
-  sentimentOverall: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-  },
-  sentimentLabel: {
-    fontSize: 14,
-    fontFamily: 'Inter-Medium',
-  },
-  sentimentValue: {
-    fontSize: 16,
-    fontFamily: 'Inter-Bold',
-  },
-  sentimentDistribution: {
-    marginTop: spacing.sm,
-  },
-  sentimentBar: {
-    flexDirection: 'row',
-    height: 8,
-    borderRadius: 4,
-    overflow: 'hidden',
-  },
-  sentimentSegment: {
-    height: '100%',
-  },
-  entitiesCard: {
-    padding: spacing.lg,
-  },
-  entitiesGrid: {
-    flexDirection: 'row',
-    flexWrap: 'wrap',
-    gap: spacing.sm,
-  },
-  entityItem: {
-    paddingHorizontal: spacing.sm,
-    paddingVertical: spacing.xs,
+  backButton: {
+    alignSelf: 'flex-start',
+    paddingHorizontal: spacing.md,
+    paddingVertical: spacing.sm,
     borderRadius: 8,
-    alignItems: 'center',
   },
-  entityText: {
-    fontSize: 12,
+  backButtonText: {
+    fontSize: 14,
     fontFamily: 'Inter-SemiBold',
-  },
-  entityType: {
-    fontSize: 10,
-    fontFamily: 'Inter-Regular',
-    textTransform: 'uppercase',
   },
 });
