@@ -3,33 +3,7 @@ import { View, Text, ScrollView, StyleSheet, TouchableOpacity, Share, Alert } fr
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { LinearGradient } from 'expo-linear-gradient';
 import { useLocalSearchParams, useRouter } from 'expo-router';
-import { 
-  ArrowLeft, 
-  Share2, 
-  Download, 
-  Eye, 
-  EyeOff, 
-  Clock, 
-  Brain, 
-  FileText, 
-  TrendingUp,
-  Target,
-  Lightbulb,
-  Settings,
-  BarChart3,
-  Heart,
-  Users,
-  MapPin,
-  Calendar,
-  DollarSign,
-  Percent,
-  ChevronDown,
-  ChevronUp,
-  Copy,
-  CheckCircle,
-  AlertCircle,
-  Info
-} from 'lucide-react-native';
+import { ArrowLeft, Share2, Download, Eye, EyeOff, Clock, Brain, FileText, TrendingUp, Target, Lightbulb, Settings, ChartBar as BarChart3, Heart, Users, MapPin, Calendar, DollarSign, Percent, ChevronDown, ChevronUp, Copy, CircleCheck as CheckCircle, CircleAlert as AlertCircle, Info } from 'lucide-react-native';
 import { useTheme, spacing, borderRadius } from '@/constants/Theme';
 import { GlassCard } from '@/components/ui/GlassCard';
 import { Button } from '@/components/ui/Button';
