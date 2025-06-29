@@ -2,7 +2,8 @@ import React, { useState, useEffect } from 'react';
 import { View, Text, ScrollView, StyleSheet, TouchableOpacity, RefreshControl } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { LinearGradient } from 'expo-linear-gradient';
-import { History, FileText, Calendar, ChevronRight, Search, RefreshCw } from 'lucide-react-native';
+import { History, FileText, Calendar, ChevronRight, Search, RefreshCw, Eye } from 'lucide-react-native';
+import { useRouter } from 'expo-router';
 import { useTheme, spacing } from '@/constants/Theme';
 import { GlassCard } from '@/components/ui/GlassCard';
 import { Input } from '@/components/ui/Input';
@@ -23,6 +24,7 @@ interface AnalysisHistory {
 
 export default function HistoryScreen() {
   const { colors } = useTheme();
+  const router = useRouter();
   const { user } = useAuth();
   const { modalState, hideModal, showError } = useModal();
   
@@ -88,6 +90,10 @@ export default function HistoryScreen() {
     await loadAnalysisHistory();
   };
 
+  const viewAnalysis = (analysisId: string) => {
+    router.push(`/history/${analysisId}`);
+  };
+
   const filteredAnalyses = analyses.filter(analysis =>
     analysis.document_title.toLowerCase().includes(searchQuery.toLowerCase())
   );
@@ -129,31 +135,6 @@ export default function HistoryScreen() {
     }
   };
 
-  const viewAnalysisDetails = async (analysisId: string) => {
-    try {
-      // Load the full analysis details
-      const { data, error } = await supabase
-        .from('analysis_sections')
-        .select('*')
-        .eq('analysis_id', analysisId)
-        .order('created_at');
-
-      if (error) throw error;
-
-      // For now, just show a modal with the sections count
-      // In a full implementation, you'd navigate to a detailed view
-      showError(
-        'Analysis Details',
-        `This analysis contains ${data?.length || 0} sections. Full analysis viewer coming soon!`
-      );
-    } catch (error) {
-      showError(
-        'Error',
-        'Failed to load analysis details. Please try again.'
-      );
-    }
-  };
-
   if (!user) {
     return (
       <SafeAreaView style={{ flex: 1, backgroundColor: colors.background }}>
@@ -192,7 +173,7 @@ export default function HistoryScreen() {
             Analysis History
           </Text>
           <Text style={[styles.subtitle, { color: colors.onSurfaceVariant }]}>
-            View your previous document analyses
+            View and manage your previous document analyses
           </Text>
         </View>
 
@@ -253,7 +234,7 @@ export default function HistoryScreen() {
               <TouchableOpacity 
                 key={analysis.id} 
                 style={styles.analysisItem}
-                onPress={() => viewAnalysisDetails(analysis.id)}
+                onPress={() => viewAnalysis(analysis.id)}
               >
                 <GlassCard style={styles.analysisCard}>
                   <View style={styles.analysisHeader}>
@@ -296,6 +277,12 @@ export default function HistoryScreen() {
                           {getStatusText(analysis.status)}
                         </Text>
                       </View>
+                      <TouchableOpacity
+                        style={[styles.viewButton, { backgroundColor: colors.primaryContainer }]}
+                        onPress={() => viewAnalysis(analysis.id)}
+                      >
+                        <Eye size={16} color={colors.onPrimaryContainer} />
+                      </TouchableOpacity>
                       <ChevronRight size={20} color={colors.onSurfaceVariant} />
                     </View>
                   </View>
@@ -435,6 +422,13 @@ const styles = StyleSheet.create({
   statusText: {
     fontSize: 12,
     fontFamily: 'Inter-Medium',
+  },
+  viewButton: {
+    width: 32,
+    height: 32,
+    borderRadius: 16,
+    alignItems: 'center',
+    justifyContent: 'center',
   },
   signInPrompt: {
     alignItems: 'center',
