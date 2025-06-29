@@ -50,7 +50,7 @@ export type Database = {
           user_id: string | null;
           title: string;
           content: string;
-          file_type: 'pdf' | 'txt' | 'md';
+          file_type: 'pdf' | 'txt' | 'md' | 'docx' | 'csv' | 'json';
           file_size: number;
           storage_path: string | null;
           created_at: string;
@@ -61,7 +61,7 @@ export type Database = {
           user_id?: string | null;
           title: string;
           content: string;
-          file_type: 'pdf' | 'txt' | 'md';
+          file_type: 'pdf' | 'txt' | 'md' | 'docx' | 'csv' | 'json';
           file_size?: number;
           storage_path?: string | null;
           created_at?: string;
@@ -72,7 +72,7 @@ export type Database = {
           user_id?: string | null;
           title?: string;
           content?: string;
-          file_type?: 'pdf' | 'txt' | 'md';
+          file_type?: 'pdf' | 'txt' | 'md' | 'docx' | 'csv' | 'json';
           file_size?: number;
           storage_path?: string | null;
           created_at?: string;
@@ -83,7 +83,7 @@ export type Database = {
         Row: {
           id: string;
           user_id: string | null;
-          document_id: string;
+          document_id: string | null;
           ai_provider: 'deepseek' | 'gemini';
           status: 'pending' | 'processing' | 'completed' | 'failed';
           progress: number;
@@ -94,7 +94,7 @@ export type Database = {
         Insert: {
           id?: string;
           user_id?: string | null;
-          document_id: string;
+          document_id?: string | null;
           ai_provider: 'deepseek' | 'gemini';
           status?: 'pending' | 'processing' | 'completed' | 'failed';
           progress?: number;
@@ -105,7 +105,7 @@ export type Database = {
         Update: {
           id?: string;
           user_id?: string | null;
-          document_id?: string;
+          document_id?: string | null;
           ai_provider?: 'deepseek' | 'gemini';
           status?: 'pending' | 'processing' | 'completed' | 'failed';
           progress?: number;
@@ -117,7 +117,7 @@ export type Database = {
       analysis_sections: {
         Row: {
           id: string;
-          analysis_id: string;
+          analysis_id: string | null;
           section_type: 'summary' | 'insights' | 'recommendations' | 'technical' | 'full_report';
           title: string;
           content: string;
@@ -125,7 +125,7 @@ export type Database = {
         };
         Insert: {
           id?: string;
-          analysis_id: string;
+          analysis_id?: string | null;
           section_type: 'summary' | 'insights' | 'recommendations' | 'technical' | 'full_report';
           title: string;
           content: string;
@@ -133,7 +133,7 @@ export type Database = {
         };
         Update: {
           id?: string;
-          analysis_id?: string;
+          analysis_id?: string | null;
           section_type?: 'summary' | 'insights' | 'recommendations' | 'technical' | 'full_report';
           title?: string;
           content?: string;

@@ -2,7 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { View, Text, ScrollView, StyleSheet, Alert, TouchableOpacity } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { LinearGradient } from 'expo-linear-gradient';
-import { User, Mail, ArrowLeft, CreditCard as Edit3, Save } from 'lucide-react-native';
+import { User, Mail, ArrowLeft, Edit3, Save, AlertCircle } from 'lucide-react-native';
 import { useRouter } from 'expo-router';
 import { useTheme, spacing } from '@/constants/Theme';
 import { GlassCard } from '@/components/ui/GlassCard';
@@ -23,11 +23,12 @@ interface UserProfile {
 export default function ProfileScreen() {
   const { colors } = useTheme();
   const router = useRouter();
-  const { user } = useAuth();
+  const { user, updateProfile } = useAuth();
   const [profile, setProfile] = useState<UserProfile | null>(null);
   const [loading, setLoading] = useState(false);
   const [editing, setEditing] = useState(false);
   const [fullName, setFullName] = useState('');
+  const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
     if (user) {
@@ -36,14 +37,22 @@ export default function ProfileScreen() {
   }, [user]);
 
   const loadProfile = async () => {
+    if (!user) return;
+    
     try {
+      setError(null);
       const { data, error } = await supabase
         .from('profiles')
         .select('*')
-        .eq('id', user?.id)
+        .eq('id', user.id)
         .single();
 
-      if (error && error.code !== 'PGRST116') {
+      if (error) {
+        // If profile doesn't exist, create it
+        if (error.code === 'PGRST116') {
+          await createProfile();
+          return;
+        }
         throw error;
       }
 
@@ -53,6 +62,29 @@ export default function ProfileScreen() {
       }
     } catch (error) {
       console.error('Error loading profile:', error);
+      setError('Failed to load profile. Please try again.');
+    }
+  };
+
+  const createProfile = async () => {
+    if (!user) return;
+
+    try {
+      const { error } = await supabase
+        .from('profiles')
+        .insert({
+          id: user.id,
+          email: user.email!,
+          full_name: user.user_metadata?.full_name || '',
+        });
+
+      if (error) throw error;
+      
+      // Reload profile after creation
+      await loadProfile();
+    } catch (error) {
+      console.error('Error creating profile:', error);
+      setError('Failed to create profile. Please try again.');
     }
   };
 
@@ -60,14 +92,13 @@ export default function ProfileScreen() {
     if (!user) return;
 
     setLoading(true);
+    setError(null);
+    
     try {
-      const { error } = await supabase
-        .from('profiles')
-        .upsert({
-          id: user.id,
-          email: user.email!,
-          full_name: fullName || null,
-        });
+      // Update using the auth hook which handles both auth and profile table
+      const { error } = await updateProfile({
+        full_name: fullName || null,
+      });
 
       if (error) throw error;
 
@@ -75,7 +106,8 @@ export default function ProfileScreen() {
       setEditing(false);
       await loadProfile();
     } catch (error) {
-      Alert.alert('Error', 'Failed to update profile');
+      console.error('Error updating profile:', error);
+      setError('Failed to update profile. Please try again.');
     } finally {
       setLoading(false);
     }
@@ -89,6 +121,34 @@ export default function ProfileScreen() {
       day: 'numeric',
     });
   };
+
+  if (!user) {
+    return (
+      <SafeAreaView style={{ flex: 1, backgroundColor: colors.background }}>
+        <LinearGradient
+          colors={[colors.primary + '20', colors.background]}
+          style={StyleSheet.absoluteFill}
+        />
+        
+        <View style={[styles.container, styles.centeredContainer]}>
+          <GlassCard style={styles.errorCard}>
+            <AlertCircle size={48} color={colors.error} />
+            <Text style={[styles.errorTitle, { color: colors.onSurface }]}>
+              Authentication Required
+            </Text>
+            <Text style={[styles.errorText, { color: colors.onSurfaceVariant }]}>
+              Please sign in to view your profile.
+            </Text>
+            <Button
+              title="Go Back"
+              onPress={() => router.back()}
+              style={styles.errorButton}
+            />
+          </GlassCard>
+        </View>
+      </SafeAreaView>
+    );
+  }
 
   return (
     <SafeAreaView style={{ flex: 1, backgroundColor: colors.background }}>
@@ -117,12 +177,28 @@ export default function ProfileScreen() {
           </View>
         </View>
 
+        {/* Error Display */}
+        {error && (
+          <GlassCard style={styles.errorCard}>
+            <AlertCircle size={24} color={colors.error} />
+            <Text style={[styles.errorText, { color: colors.error }]}>
+              {error}
+            </Text>
+            <Button
+              title="Retry"
+              onPress={loadProfile}
+              variant="outlined"
+              size="small"
+            />
+          </GlassCard>
+        )}
+
         {/* Profile Card */}
         <GlassCard style={styles.profileCard}>
           <View style={styles.avatarSection}>
             <View style={[styles.avatar, { backgroundColor: colors.primary }]}>
               <Text style={[styles.avatarText, { color: colors.onPrimary }]}>
-                {user?.email?.charAt(0).toUpperCase()}
+                {(profile?.full_name || user?.email || 'U').charAt(0).toUpperCase()}
               </Text>
             </View>
             <TouchableOpacity 
@@ -152,6 +228,7 @@ export default function ProfileScreen() {
                   onPress={() => {
                     setEditing(false);
                     setFullName(profile?.full_name || '');
+                    setError(null);
                   }}
                   variant="outlined"
                   style={styles.cancelButton}
@@ -192,7 +269,8 @@ export default function ProfileScreen() {
                   Member Since
                 </Text>
                 <Text style={[styles.infoValue, { color: colors.onSurface }]}>
-                  {profile?.created_at ? formatDate(profile.created_at) : 'Unknown'}
+                  {profile?.created_at ? formatDate(profile.created_at) : 
+                   user?.created_at ? formatDate(user.created_at) : 'Unknown'}
                 </Text>
               </View>
 
@@ -242,6 +320,10 @@ const styles = StyleSheet.create({
     flex: 1,
     padding: spacing.md,
   },
+  centeredContainer: {
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
   header: {
     marginBottom: spacing.xl,
   },
@@ -263,6 +345,28 @@ const styles = StyleSheet.create({
     fontSize: 16,
     fontFamily: 'Inter-Medium',
     textAlign: 'center',
+  },
+  errorCard: {
+    alignItems: 'center',
+    padding: spacing.lg,
+    marginBottom: spacing.lg,
+  },
+  errorTitle: {
+    fontSize: 18,
+    fontFamily: 'Inter-SemiBold',
+    marginTop: spacing.sm,
+    marginBottom: spacing.xs,
+    textAlign: 'center',
+  },
+  errorText: {
+    fontSize: 14,
+    fontFamily: 'Inter-Regular',
+    textAlign: 'center',
+    lineHeight: 20,
+    marginBottom: spacing.md,
+  },
+  errorButton: {
+    marginTop: spacing.xs,
   },
   profileCard: {
     marginBottom: spacing.lg,
