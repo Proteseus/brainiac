@@ -1,8 +1,8 @@
 import React, { useState, useEffect } from 'react';
-import { View, Text, ScrollView, StyleSheet, Alert } from 'react-native';
+import { View, Text, ScrollView, StyleSheet, Alert, TouchableOpacity } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { LinearGradient } from 'expo-linear-gradient';
-import { User, Settings, LogOut, Key, Brain, Mail } from 'lucide-react-native';
+import { Settings, User, Key, Brain, Palette, Bell, ChevronRight, LogOut } from 'lucide-react-native';
 import { useRouter } from 'expo-router';
 import { useTheme, spacing } from '@/constants/Theme';
 import { GlassCard } from '@/components/ui/GlassCard';
@@ -19,7 +19,7 @@ interface UserSettings {
   notifications_enabled: boolean;
 }
 
-export default function ProfileScreen() {
+export default function SettingsScreen() {
   const { colors } = useTheme();
   const router = useRouter();
   const { user, signOut } = useAuth();
@@ -100,6 +100,38 @@ export default function ProfileScreen() {
     );
   };
 
+  const settingsItems = [
+    {
+      icon: User,
+      title: 'Profile',
+      description: 'Manage your account information',
+      onPress: () => router.push('/settings/profile'),
+      showChevron: true,
+    },
+    {
+      icon: Brain,
+      title: 'AI Provider',
+      description: settings?.preferred_ai_provider === 'deepseek' ? 'DeepSeek AI' : 'Google Gemini',
+      onPress: () => {},
+      showChevron: false,
+    },
+    {
+      icon: Palette,
+      title: 'Theme',
+      description: settings?.theme_preference === 'system' ? 'System' : 
+                   settings?.theme_preference === 'dark' ? 'Dark' : 'Light',
+      onPress: () => {},
+      showChevron: false,
+    },
+    {
+      icon: Bell,
+      title: 'Notifications',
+      description: settings?.notifications_enabled ? 'Enabled' : 'Disabled',
+      onPress: () => {},
+      showChevron: false,
+    },
+  ];
+
   if (!user) {
     return (
       <SafeAreaView style={{ flex: 1, backgroundColor: colors.background }}>
@@ -110,12 +142,12 @@ export default function ProfileScreen() {
         
         <View style={[styles.container, styles.centeredContainer]}>
           <GlassCard style={styles.signInPrompt}>
-            <User size={48} color={colors.onSurfaceVariant} />
+            <Settings size={48} color={colors.onSurfaceVariant} />
             <Text style={[styles.signInTitle, { color: colors.onSurface }]}>
               Welcome to Brainiac
             </Text>
             <Text style={[styles.signInText, { color: colors.onSurfaceVariant }]}>
-              Sign in to access your profile, save API keys, and sync your analyses across devices.
+              Sign in to access settings, save API keys, and sync your analyses across devices.
             </Text>
             <Button
               title="Sign In"
@@ -138,35 +170,48 @@ export default function ProfileScreen() {
       <ScrollView style={styles.container} showsVerticalScrollIndicator={false}>
         {/* Header */}
         <View style={styles.header}>
-          <User size={32} color={colors.primary} />
+          <Settings size={32} color={colors.primary} />
           <Text style={[styles.title, { color: colors.onBackground }]}>
-            Profile
+            Settings
           </Text>
           <Text style={[styles.subtitle, { color: colors.onSurfaceVariant }]}>
             Manage your account and preferences
           </Text>
         </View>
 
-        {/* User Info */}
-        <GlassCard style={styles.userCard}>
-          <View style={styles.userInfo}>
-            <View style={[styles.avatar, { backgroundColor: colors.primary }]}>
-              <Text style={[styles.avatarText, { color: colors.onPrimary }]}>
-                {user.email?.charAt(0).toUpperCase()}
-              </Text>
-            </View>
-            <View style={styles.userDetails}>
-              <Text style={[styles.userName, { color: colors.onSurface }]}>
-                {user.user_metadata?.full_name || user.email?.split('@')[0]}
-              </Text>
-              <View style={styles.emailContainer}>
-                <Mail size={16} color={colors.onSurfaceVariant} />
-                <Text style={[styles.userEmail, { color: colors.onSurfaceVariant }]}>
-                  {user.email}
-                </Text>
+        {/* Settings Items */}
+        <GlassCard style={styles.settingsCard}>
+          {settingsItems.map((item, index) => (
+            <TouchableOpacity
+              key={index}
+              style={[
+                styles.settingItem,
+                index < settingsItems.length - 1 && {
+                  borderBottomWidth: 1,
+                  borderBottomColor: colors.outlineVariant,
+                }
+              ]}
+              onPress={item.onPress}
+              disabled={!item.showChevron}
+            >
+              <View style={styles.settingLeft}>
+                <View style={[styles.settingIcon, { backgroundColor: colors.primaryContainer }]}>
+                  <item.icon size={20} color={colors.primary} />
+                </View>
+                <View style={styles.settingContent}>
+                  <Text style={[styles.settingTitle, { color: colors.onSurface }]}>
+                    {item.title}
+                  </Text>
+                  <Text style={[styles.settingDescription, { color: colors.onSurfaceVariant }]}>
+                    {item.description}
+                  </Text>
+                </View>
               </View>
-            </View>
-          </View>
+              {item.showChevron && (
+                <ChevronRight size={20} color={colors.onSurfaceVariant} />
+              )}
+            </TouchableOpacity>
+          ))}
         </GlassCard>
 
         {/* API Keys */}
@@ -207,43 +252,18 @@ export default function ProfileScreen() {
           />
         </GlassCard>
 
-        {/* Settings */}
-        <GlassCard style={styles.settingsCard}>
-          <View style={styles.sectionHeader}>
-            <Settings size={24} color={colors.primary} />
-            <Text style={[styles.sectionTitle, { color: colors.onSurface }]}>
-              Preferences
-            </Text>
-          </View>
-          
-          <View style={styles.settingItem}>
-            <Text style={[styles.settingLabel, { color: colors.onSurface }]}>
-              Preferred AI Provider
-            </Text>
-            <Text style={[styles.settingValue, { color: colors.onSurfaceVariant }]}>
-              {settings?.preferred_ai_provider === 'deepseek' ? 'DeepSeek AI' : 'Google Gemini'}
-            </Text>
-          </View>
-          
-          <View style={styles.settingItem}>
-            <Text style={[styles.settingLabel, { color: colors.onSurface }]}>
-              Theme
-            </Text>
-            <Text style={[styles.settingValue, { color: colors.onSurfaceVariant }]}>
-              {settings?.theme_preference === 'system' ? 'System' : 
-               settings?.theme_preference === 'dark' ? 'Dark' : 'Light'}
-            </Text>
-          </View>
-        </GlassCard>
-
         {/* Sign Out */}
         <GlassCard style={styles.signOutCard}>
-          <Button
-            title="Sign Out"
-            onPress={handleSignOut}
-            variant="outlined"
-            style={[styles.signOutButton, { borderColor: colors.error }]}
-          />
+          <TouchableOpacity style={styles.signOutItem} onPress={handleSignOut}>
+            <View style={styles.settingLeft}>
+              <View style={[styles.settingIcon, { backgroundColor: colors.errorContainer }]}>
+                <LogOut size={20} color={colors.error} />
+              </View>
+              <Text style={[styles.settingTitle, { color: colors.error }]}>
+                Sign Out
+              </Text>
+            </View>
+          </TouchableOpacity>
         </GlassCard>
       </ScrollView>
     </SafeAreaView>
@@ -274,39 +294,37 @@ const styles = StyleSheet.create({
     fontFamily: 'Inter-Medium',
     textAlign: 'center',
   },
-  userCard: {
+  settingsCard: {
     marginBottom: spacing.lg,
   },
-  userInfo: {
+  settingItem: {
     flexDirection: 'row',
     alignItems: 'center',
-    gap: spacing.md,
+    justifyContent: 'space-between',
+    paddingVertical: spacing.md,
   },
-  avatar: {
-    width: 60,
-    height: 60,
-    borderRadius: 30,
+  settingLeft: {
+    flexDirection: 'row',
     alignItems: 'center',
-    justifyContent: 'center',
-  },
-  avatarText: {
-    fontSize: 24,
-    fontFamily: 'Inter-Bold',
-  },
-  userDetails: {
     flex: 1,
   },
-  userName: {
-    fontSize: 20,
+  settingIcon: {
+    width: 40,
+    height: 40,
+    borderRadius: 20,
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginRight: spacing.md,
+  },
+  settingContent: {
+    flex: 1,
+  },
+  settingTitle: {
+    fontSize: 16,
     fontFamily: 'Inter-SemiBold',
     marginBottom: spacing.xs,
   },
-  emailContainer: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: spacing.xs,
-  },
-  userEmail: {
+  settingDescription: {
     fontSize: 14,
     fontFamily: 'Inter-Regular',
   },
@@ -332,30 +350,13 @@ const styles = StyleSheet.create({
   saveButton: {
     marginTop: spacing.sm,
   },
-  settingsCard: {
-    marginBottom: spacing.lg,
-  },
-  settingItem: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-    paddingVertical: spacing.md,
-    borderBottomWidth: 1,
-    borderBottomColor: 'rgba(255, 255, 255, 0.1)',
-  },
-  settingLabel: {
-    fontSize: 16,
-    fontFamily: 'Inter-Medium',
-  },
-  settingValue: {
-    fontSize: 14,
-    fontFamily: 'Inter-Regular',
-  },
   signOutCard: {
     marginBottom: spacing.xl,
   },
-  signOutButton: {
-    borderWidth: 1,
+  signOutItem: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingVertical: spacing.sm,
   },
   signInPrompt: {
     alignItems: 'center',
