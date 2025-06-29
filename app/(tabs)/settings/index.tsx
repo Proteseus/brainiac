@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { View, Text, ScrollView, StyleSheet, Alert, TouchableOpacity } from 'react-native';
+import { View, Text, ScrollView, StyleSheet, TouchableOpacity } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { LinearGradient } from 'expo-linear-gradient';
 import { Settings, User, Key, Brain, Palette, Bell, ChevronRight, LogOut } from 'lucide-react-native';
@@ -8,6 +8,8 @@ import { useTheme, spacing } from '@/constants/Theme';
 import { GlassCard } from '@/components/ui/GlassCard';
 import { Button } from '@/components/ui/Button';
 import { Input } from '@/components/ui/Input';
+import { CustomModal } from '@/components/ui/CustomModal';
+import { useModal } from '@/hooks/useModal';
 import { useAuth } from '@/hooks/useAuth';
 import { supabase } from '@/lib/supabase';
 import AsyncStorage from '@react-native-async-storage/async-storage';
@@ -30,6 +32,8 @@ export default function SettingsScreen() {
   const { colors } = useTheme();
   const router = useRouter();
   const { user, signOut } = useAuth();
+  const { modalState, hideModal, showSuccess, showError, showConfirm } = useModal();
+  
   const [settings, setSettings] = useState<UserSettings | null>(null);
   const [loading, setLoading] = useState(false);
   const [deepseekKey, setDeepseekKey] = useState('');
@@ -61,9 +65,39 @@ export default function SettingsScreen() {
         setDeepseekKey(data.deepseek_api_key || '');
         setGeminiKey(data.gemini_api_key || '');
         setPreferredProvider(data.preferred_ai_provider || 'deepseek');
+      } else {
+        // Create default settings if they don't exist
+        await createDefaultSettings();
       }
     } catch (error) {
       console.error('Error loading user settings:', error);
+      showError(
+        'Settings Error',
+        'Failed to load your settings. Please try again.',
+        loadUserSettings
+      );
+    }
+  };
+
+  const createDefaultSettings = async () => {
+    if (!user) return;
+
+    try {
+      const { error } = await supabase
+        .from('user_settings')
+        .insert({
+          user_id: user.id,
+          preferred_ai_provider: 'deepseek',
+          theme_preference: 'system',
+          notifications_enabled: true,
+        });
+
+      if (error) throw error;
+      
+      // Reload settings after creation
+      await loadUserSettings();
+    } catch (error) {
+      console.error('Error creating default settings:', error);
     }
   };
 
@@ -80,6 +114,11 @@ export default function SettingsScreen() {
       setPreferredProvider((provider as 'deepseek' | 'gemini') || 'deepseek');
     } catch (error) {
       console.error('Error loading local settings:', error);
+      showError(
+        'Storage Error',
+        'Failed to load your local settings. Please check your device storage.',
+        loadLocalSettings
+      );
     }
   };
 
@@ -92,9 +131,12 @@ export default function SettingsScreen() {
           .from('user_settings')
           .upsert({
             user_id: user.id,
-            deepseek_api_key: deepseekKey || null,
-            gemini_api_key: geminiKey || null,
+            deepseek_api_key: deepseekKey.trim() || null,
+            gemini_api_key: geminiKey.trim() || null,
             preferred_ai_provider: preferredProvider,
+            updated_at: new Date().toISOString(),
+          }, {
+            onConflict: 'user_id'
           });
 
         if (error) throw error;
@@ -102,37 +144,51 @@ export default function SettingsScreen() {
       } else {
         // Save to local storage for guest users
         await Promise.all([
-          AsyncStorage.setItem(LOCAL_STORAGE_KEYS.DEEPSEEK_API_KEY, deepseekKey),
-          AsyncStorage.setItem(LOCAL_STORAGE_KEYS.GEMINI_API_KEY, geminiKey),
+          AsyncStorage.setItem(LOCAL_STORAGE_KEYS.DEEPSEEK_API_KEY, deepseekKey.trim()),
+          AsyncStorage.setItem(LOCAL_STORAGE_KEYS.GEMINI_API_KEY, geminiKey.trim()),
           AsyncStorage.setItem(LOCAL_STORAGE_KEYS.PREFERRED_AI_PROVIDER, preferredProvider),
         ]);
       }
 
-      Alert.alert('Success', 'API keys saved successfully');
+      showSuccess(
+        'Settings Saved',
+        'Your API keys and preferences have been saved successfully.'
+      );
     } catch (error) {
-      Alert.alert('Error', 'Failed to save API keys');
+      console.error('Error saving API keys:', error);
+      showError(
+        'Save Failed',
+        'Failed to save your API keys. Please check your connection and try again.',
+        saveApiKeys
+      );
     } finally {
       setLoading(false);
     }
   };
 
   const handleSignOut = async () => {
-    Alert.alert(
+    showConfirm(
       'Sign Out',
-      'Are you sure you want to sign out?',
-      [
-        { text: 'Cancel', style: 'cancel' },
-        {
-          text: 'Sign Out',
-          style: 'destructive',
-          onPress: async () => {
-            const { error } = await signOut();
-            if (error) {
-              Alert.alert('Error', 'Failed to sign out');
-            }
-          },
-        },
-      ]
+      'Are you sure you want to sign out? Your local settings will be preserved.',
+      async () => {
+        try {
+          const { error } = await signOut();
+          if (error) {
+            showError(
+              'Sign Out Failed',
+              'Failed to sign out. Please try again.'
+            );
+          }
+        } catch (error) {
+          showError(
+            'Sign Out Error',
+            'An unexpected error occurred while signing out.'
+          );
+        }
+      },
+      undefined,
+      'Sign Out',
+      'Cancel'
     );
   };
 
@@ -303,6 +359,7 @@ export default function SettingsScreen() {
             onChangeText={setDeepseekKey}
             secureTextEntry
             autoCapitalize="none"
+            autoCorrect={false}
           />
           
           <Input
@@ -312,6 +369,7 @@ export default function SettingsScreen() {
             onChangeText={setGeminiKey}
             secureTextEntry
             autoCapitalize="none"
+            autoCorrect={false}
           />
           
           <Button
@@ -361,6 +419,18 @@ export default function SettingsScreen() {
           </GlassCard>
         )}
       </ScrollView>
+
+      {/* Custom Modal */}
+      <CustomModal
+        visible={modalState.visible}
+        onClose={hideModal}
+        type={modalState.type}
+        title={modalState.title}
+        message={modalState.message}
+        primaryButton={modalState.primaryButton}
+        secondaryButton={modalState.secondaryButton}
+        dismissible={modalState.dismissible}
+      />
     </SafeAreaView>
   );
 }

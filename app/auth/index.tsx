@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { View, Text, ScrollView, StyleSheet, Alert, TouchableOpacity } from 'react-native';
+import { View, Text, ScrollView, StyleSheet, TouchableOpacity } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { LinearGradient } from 'expo-linear-gradient';
 import { Brain, Mail, Lock } from 'lucide-react-native';
@@ -8,12 +8,16 @@ import { useTheme, spacing } from '@/constants/Theme';
 import { GlassCard } from '@/components/ui/GlassCard';
 import { Button } from '@/components/ui/Button';
 import { Input } from '@/components/ui/Input';
+import { CustomModal } from '@/components/ui/CustomModal';
+import { useModal } from '@/hooks/useModal';
 import { useAuth } from '@/hooks/useAuth';
 
 export default function AuthScreen() {
   const { colors } = useTheme();
   const router = useRouter();
   const { signIn, signUp } = useAuth();
+  const { modalState, hideModal, showSuccess, showError } = useModal();
+  
   const [isSignUp, setIsSignUp] = useState(false);
   const [loading, setLoading] = useState(false);
   const [formData, setFormData] = useState({
@@ -23,36 +27,93 @@ export default function AuthScreen() {
     fullName: '',
   });
 
-  const handleAuth = async () => {
-    if (!formData.email || !formData.password) {
-      Alert.alert('Error', 'Please fill in all required fields');
-      return;
+  const validateForm = () => {
+    if (!formData.email.trim()) {
+      showError('Validation Error', 'Please enter your email address.');
+      return false;
     }
 
-    if (isSignUp && formData.password !== formData.confirmPassword) {
-      Alert.alert('Error', 'Passwords do not match');
-      return;
+    if (!formData.email.includes('@')) {
+      showError('Validation Error', 'Please enter a valid email address.');
+      return false;
     }
+
+    if (!formData.password) {
+      showError('Validation Error', 'Please enter your password.');
+      return false;
+    }
+
+    if (formData.password.length < 6) {
+      showError('Validation Error', 'Password must be at least 6 characters long.');
+      return false;
+    }
+
+    if (isSignUp) {
+      if (!formData.fullName.trim()) {
+        showError('Validation Error', 'Please enter your full name.');
+        return false;
+      }
+
+      if (formData.password !== formData.confirmPassword) {
+        showError('Validation Error', 'Passwords do not match.');
+        return false;
+      }
+    }
+
+    return true;
+  };
+
+  const handleAuth = async () => {
+    if (!validateForm()) return;
 
     setLoading(true);
     try {
       if (isSignUp) {
-        const { error } = await signUp(formData.email, formData.password, formData.fullName);
+        const { error } = await signUp(
+          formData.email.trim(), 
+          formData.password, 
+          formData.fullName.trim()
+        );
+        
         if (error) throw error;
         
-        Alert.alert(
-          'Success',
-          'Account created successfully! Please check your email for verification.',
-          [{ text: 'OK', onPress: () => router.back() }]
+        showSuccess(
+          'Account Created',
+          'Your account has been created successfully! You can now start analyzing documents.',
+          () => router.back()
         );
       } else {
-        const { error } = await signIn(formData.email, formData.password);
+        const { error } = await signIn(formData.email.trim(), formData.password);
         if (error) throw error;
         
-        router.back();
+        showSuccess(
+          'Welcome Back',
+          'You have been signed in successfully.',
+          () => router.back()
+        );
       }
     } catch (error: any) {
-      Alert.alert('Error', error.message || 'Authentication failed');
+      let errorMessage = 'An unexpected error occurred. Please try again.';
+      
+      if (error?.message) {
+        if (error.message.includes('Invalid login credentials')) {
+          errorMessage = 'Invalid email or password. Please check your credentials and try again.';
+        } else if (error.message.includes('User already registered')) {
+          errorMessage = 'An account with this email already exists. Please sign in instead.';
+        } else if (error.message.includes('Email not confirmed')) {
+          errorMessage = 'Please check your email and confirm your account before signing in.';
+        } else if (error.message.includes('Password should be at least')) {
+          errorMessage = 'Password must be at least 6 characters long.';
+        } else {
+          errorMessage = error.message;
+        }
+      }
+      
+      showError(
+        isSignUp ? 'Sign Up Failed' : 'Sign In Failed',
+        errorMessage,
+        handleAuth
+      );
     } finally {
       setLoading(false);
     }
@@ -103,6 +164,7 @@ export default function AuthScreen() {
               value={formData.fullName}
               onChangeText={(text) => setFormData(prev => ({ ...prev, fullName: text }))}
               autoCapitalize="words"
+              autoComplete="name"
             />
           )}
           
@@ -114,6 +176,7 @@ export default function AuthScreen() {
             keyboardType="email-address"
             autoCapitalize="none"
             autoComplete="email"
+            autoCorrect={false}
           />
           
           <Input
@@ -123,6 +186,7 @@ export default function AuthScreen() {
             onChangeText={(text) => setFormData(prev => ({ ...prev, password: text }))}
             secureTextEntry
             autoCapitalize="none"
+            autoComplete={isSignUp ? "new-password" : "current-password"}
           />
           
           {isSignUp && (
@@ -133,6 +197,7 @@ export default function AuthScreen() {
               onChangeText={(text) => setFormData(prev => ({ ...prev, confirmPassword: text }))}
               secureTextEntry
               autoCapitalize="none"
+              autoComplete="new-password"
             />
           )}
           
@@ -195,6 +260,18 @@ export default function AuthScreen() {
           </Text>
         </TouchableOpacity>
       </ScrollView>
+
+      {/* Custom Modal */}
+      <CustomModal
+        visible={modalState.visible}
+        onClose={hideModal}
+        type={modalState.type}
+        title={modalState.title}
+        message={modalState.message}
+        primaryButton={modalState.primaryButton}
+        secondaryButton={modalState.secondaryButton}
+        dismissible={modalState.dismissible}
+      />
     </SafeAreaView>
   );
 }
