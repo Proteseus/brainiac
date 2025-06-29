@@ -3,15 +3,17 @@ import { View, Text, ScrollView, StyleSheet, TouchableOpacity, Share, Alert } fr
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { LinearGradient } from 'expo-linear-gradient';
 import { useLocalSearchParams, useRouter } from 'expo-router';
-import { ArrowLeft, Share2, Download, Eye, EyeOff, Clock, Brain, FileText, TrendingUp, Target, Lightbulb, Settings, ChartBar as BarChart3, Heart, Users, MapPin, Calendar, DollarSign, Percent, ChevronDown, ChevronUp, Copy, CircleCheck as CheckCircle, CircleAlert as AlertCircle, Info } from 'lucide-react-native';
+import { ArrowLeft, Share2, Download, Eye, EyeOff, Clock, Brain, FileText, TrendingUp, Target, Lightbulb, Settings, ChartBar as BarChart3, Heart, Users, MapPin, Calendar, DollarSign, Percent, ChevronDown, ChevronUp, CircleCheck as CheckCircle, CircleAlert as AlertCircle, Info } from 'lucide-react-native';
 import { useTheme, spacing, borderRadius } from '@/constants/Theme';
 import { GlassCard } from '@/components/ui/GlassCard';
 import { Button } from '@/components/ui/Button';
 import { MarkdownRenderer } from '@/components/ui/MarkdownRenderer';
 import { ChartRenderer } from '@/components/ui/ChartRenderer';
 import { CustomModal } from '@/components/ui/CustomModal';
+import { CopyButton } from '@/components/ui/CopyButton';
 import { useModal } from '@/hooks/useModal';
 import { useAuth } from '@/hooks/useAuth';
+import { useClipboard } from '@/hooks/useClipboard';
 import { supabase } from '@/lib/supabase';
 
 interface AnalysisData {
@@ -62,6 +64,7 @@ export default function AnalysisViewerScreen() {
   const { user } = useAuth();
   const { id } = useLocalSearchParams<{ id: string }>();
   const { modalState, hideModal, showError, showSuccess } = useModal();
+  const { copy } = useClipboard();
   
   const [analysis, setAnalysis] = useState<AnalysisData | null>(null);
   const [loading, setLoading] = useState(true);
@@ -263,23 +266,12 @@ export default function AnalysisViewerScreen() {
     }
   };
 
-  const copyToClipboard = async (content: string) => {
-    try {
-      if (navigator.clipboard) {
-        await navigator.clipboard.writeText(content);
-        showSuccess('Copied', 'Content copied to clipboard');
-      } else {
-        // Fallback for older browsers
-        const textArea = document.createElement('textarea');
-        textArea.value = content;
-        document.body.appendChild(textArea);
-        textArea.select();
-        document.execCommand('copy');
-        document.body.removeChild(textArea);
-        showSuccess('Copied', 'Content copied to clipboard');
-      }
-    } catch (error) {
-      showError('Copy Failed', 'Failed to copy content to clipboard');
+  const handleCopy = async (content: string, label: string = 'Content') => {
+    const result = await copy(content);
+    if (result.success) {
+      showSuccess('Copied', `${label} copied to clipboard successfully`);
+    } else {
+      showError('Copy Failed', result.error || 'Failed to copy content to clipboard');
     }
   };
 
@@ -295,7 +287,7 @@ export default function AnalysisViewerScreen() {
           title: `Analysis: ${analysis.document_title}`,
         });
       } else {
-        await copyToClipboard(shareContent);
+        await handleCopy(shareContent, 'Analysis');
       }
     } catch (error) {
       showError('Share Failed', 'Failed to share the analysis');
@@ -315,18 +307,23 @@ export default function AnalysisViewerScreen() {
         exportContent += `## ${section.title}\n\n${section.content}\n\n`;
       });
       
-      // Create and download file
-      const blob = new Blob([exportContent], { type: 'text/markdown' });
-      const url = URL.createObjectURL(blob);
-      const a = document.createElement('a');
-      a.href = url;
-      a.download = `analysis-${analysis.document_title.replace(/[^a-z0-9]/gi, '_').toLowerCase()}.md`;
-      document.body.appendChild(a);
-      a.click();
-      document.body.removeChild(a);
-      URL.revokeObjectURL(url);
-      
-      showSuccess('Export Complete', 'Analysis exported successfully');
+      // For web, create and download file
+      if (typeof window !== 'undefined' && window.document) {
+        const blob = new Blob([exportContent], { type: 'text/markdown' });
+        const url = URL.createObjectURL(blob);
+        const a = document.createElement('a');
+        a.href = url;
+        a.download = `analysis-${analysis.document_title.replace(/[^a-z0-9]/gi, '_').toLowerCase()}.md`;
+        document.body.appendChild(a);
+        a.click();
+        document.body.removeChild(a);
+        URL.revokeObjectURL(url);
+        
+        showSuccess('Export Complete', 'Analysis exported successfully');
+      } else {
+        // For mobile, copy to clipboard
+        await handleCopy(exportContent, 'Analysis export');
+      }
     } catch (error) {
       showError('Export Failed', 'Failed to export the analysis');
     }
@@ -491,7 +488,7 @@ export default function AnalysisViewerScreen() {
                   <TouchableOpacity
                     key={index}
                     style={[styles.entityItem, { backgroundColor: colors.surfaceVariant }]}
-                    onPress={() => copyToClipboard(entity.text)}
+                    onPress={() => handleCopy(entity.text, 'Entity')}
                   >
                     <Text style={[styles.entityText, { color: colors.onSurface }]}>
                       {entity.text}
@@ -699,12 +696,17 @@ export default function AnalysisViewerScreen() {
               </Text>
             </View>
             <View style={styles.documentActions}>
-              <TouchableOpacity
-                style={[styles.actionButton, { backgroundColor: colors.surfaceVariant }]}
-                onPress={() => copyToClipboard(analysis.document.content)}
-              >
-                <Copy size={16} color={colors.onSurfaceVariant} />
-              </TouchableOpacity>
+              <CopyButton
+                text={analysis.document.content}
+                onCopy={(success) => {
+                  if (success) {
+                    showSuccess('Copied', 'Document content copied to clipboard');
+                  } else {
+                    showError('Copy Failed', 'Failed to copy document content');
+                  }
+                }}
+                size="small"
+              />
               {showDocumentContent ? (
                 <EyeOff size={20} color={colors.onSurfaceVariant} />
               ) : (
@@ -747,12 +749,17 @@ export default function AnalysisViewerScreen() {
                 </View>
                 
                 <View style={styles.sectionActions}>
-                  <TouchableOpacity
-                    style={[styles.actionButton, { backgroundColor: colors.surfaceVariant }]}
-                    onPress={() => copyToClipboard(section.content)}
-                  >
-                    <Copy size={16} color={colors.onSurfaceVariant} />
-                  </TouchableOpacity>
+                  <CopyButton
+                    text={section.content}
+                    onCopy={(success) => {
+                      if (success) {
+                        showSuccess('Copied', `${section.title} copied to clipboard`);
+                      } else {
+                        showError('Copy Failed', `Failed to copy ${section.title}`);
+                      }
+                    }}
+                    size="small"
+                  />
                   
                   {isExpanded ? (
                     <ChevronUp size={20} color={colors.onSurfaceVariant} />
@@ -921,13 +928,6 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     gap: spacing.sm,
-  },
-  actionButton: {
-    width: 28,
-    height: 28,
-    borderRadius: 14,
-    alignItems: 'center',
-    justifyContent: 'center',
   },
   documentContent: {
     paddingTop: spacing.md,
