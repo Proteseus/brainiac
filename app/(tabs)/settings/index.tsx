@@ -10,6 +10,7 @@ import { Button } from '@/components/ui/Button';
 import { Input } from '@/components/ui/Input';
 import { useAuth } from '@/hooks/useAuth';
 import { supabase } from '@/lib/supabase';
+import AsyncStorage from '@react-native-async-storage/async-storage';
 
 interface UserSettings {
   preferred_ai_provider: 'deepseek' | 'gemini';
@@ -19,6 +20,12 @@ interface UserSettings {
   notifications_enabled: boolean;
 }
 
+const LOCAL_STORAGE_KEYS = {
+  DEEPSEEK_API_KEY: 'deepseek_api_key',
+  GEMINI_API_KEY: 'gemini_api_key',
+  PREFERRED_AI_PROVIDER: 'preferred_ai_provider',
+};
+
 export default function SettingsScreen() {
   const { colors } = useTheme();
   const router = useRouter();
@@ -27,10 +34,13 @@ export default function SettingsScreen() {
   const [loading, setLoading] = useState(false);
   const [deepseekKey, setDeepseekKey] = useState('');
   const [geminiKey, setGeminiKey] = useState('');
+  const [preferredProvider, setPreferredProvider] = useState<'deepseek' | 'gemini'>('deepseek');
 
   useEffect(() => {
     if (user) {
       loadUserSettings();
+    } else {
+      loadLocalSettings();
     }
   }, [user]);
 
@@ -50,29 +60,55 @@ export default function SettingsScreen() {
         setSettings(data);
         setDeepseekKey(data.deepseek_api_key || '');
         setGeminiKey(data.gemini_api_key || '');
+        setPreferredProvider(data.preferred_ai_provider || 'deepseek');
       }
     } catch (error) {
       console.error('Error loading user settings:', error);
     }
   };
 
-  const saveApiKeys = async () => {
-    if (!user) return;
+  const loadLocalSettings = async () => {
+    try {
+      const [deepseek, gemini, provider] = await Promise.all([
+        AsyncStorage.getItem(LOCAL_STORAGE_KEYS.DEEPSEEK_API_KEY),
+        AsyncStorage.getItem(LOCAL_STORAGE_KEYS.GEMINI_API_KEY),
+        AsyncStorage.getItem(LOCAL_STORAGE_KEYS.PREFERRED_AI_PROVIDER),
+      ]);
 
+      setDeepseekKey(deepseek || '');
+      setGeminiKey(gemini || '');
+      setPreferredProvider((provider as 'deepseek' | 'gemini') || 'deepseek');
+    } catch (error) {
+      console.error('Error loading local settings:', error);
+    }
+  };
+
+  const saveApiKeys = async () => {
     setLoading(true);
     try {
-      const { error } = await supabase
-        .from('user_settings')
-        .upsert({
-          user_id: user.id,
-          deepseek_api_key: deepseekKey || null,
-          gemini_api_key: geminiKey || null,
-        });
+      if (user) {
+        // Save to Supabase for authenticated users
+        const { error } = await supabase
+          .from('user_settings')
+          .upsert({
+            user_id: user.id,
+            deepseek_api_key: deepseekKey || null,
+            gemini_api_key: geminiKey || null,
+            preferred_ai_provider: preferredProvider,
+          });
 
-      if (error) throw error;
+        if (error) throw error;
+        await loadUserSettings();
+      } else {
+        // Save to local storage for guest users
+        await Promise.all([
+          AsyncStorage.setItem(LOCAL_STORAGE_KEYS.DEEPSEEK_API_KEY, deepseekKey),
+          AsyncStorage.setItem(LOCAL_STORAGE_KEYS.GEMINI_API_KEY, geminiKey),
+          AsyncStorage.setItem(LOCAL_STORAGE_KEYS.PREFERRED_AI_PROVIDER, preferredProvider),
+        ]);
+      }
 
       Alert.alert('Success', 'API keys saved successfully');
-      await loadUserSettings();
     } catch (error) {
       Alert.alert('Error', 'Failed to save API keys');
     } finally {
@@ -100,7 +136,7 @@ export default function SettingsScreen() {
     );
   };
 
-  const settingsItems = [
+  const settingsItems = user ? [
     {
       icon: User,
       title: 'Profile',
@@ -130,35 +166,22 @@ export default function SettingsScreen() {
       onPress: () => {},
       showChevron: false,
     },
+  ] : [
+    {
+      icon: Brain,
+      title: 'AI Provider',
+      description: preferredProvider === 'deepseek' ? 'DeepSeek AI' : 'Google Gemini',
+      onPress: () => {},
+      showChevron: false,
+    },
+    {
+      icon: Palette,
+      title: 'Theme',
+      description: 'System',
+      onPress: () => {},
+      showChevron: false,
+    },
   ];
-
-  if (!user) {
-    return (
-      <SafeAreaView style={{ flex: 1, backgroundColor: colors.background }}>
-        <LinearGradient
-          colors={[colors.primary + '20', colors.background]}
-          style={StyleSheet.absoluteFill}
-        />
-        
-        <View style={[styles.container, styles.centeredContainer]}>
-          <GlassCard style={styles.signInPrompt}>
-            <Settings size={48} color={colors.onSurfaceVariant} />
-            <Text style={[styles.signInTitle, { color: colors.onSurface }]}>
-              Welcome to Brainiac
-            </Text>
-            <Text style={[styles.signInText, { color: colors.onSurfaceVariant }]}>
-              Sign in to access settings, save API keys, and sync your analyses across devices.
-            </Text>
-            <Button
-              title="Sign In"
-              onPress={() => router.push('/auth')}
-              style={styles.signInButton}
-            />
-          </GlassCard>
-        </View>
-      </SafeAreaView>
-    );
-  }
 
   return (
     <SafeAreaView style={{ flex: 1, backgroundColor: colors.background }}>
@@ -175,9 +198,27 @@ export default function SettingsScreen() {
             Settings
           </Text>
           <Text style={[styles.subtitle, { color: colors.onSurfaceVariant }]}>
-            Manage your account and preferences
+            {user ? 'Manage your account and preferences' : 'Configure your AI analysis settings'}
           </Text>
         </View>
+
+        {/* Sign In Prompt for Guest Users */}
+        {!user && (
+          <GlassCard style={styles.signInPrompt}>
+            <User size={32} color={colors.primary} />
+            <Text style={[styles.signInTitle, { color: colors.onSurface }]}>
+              Get More Features
+            </Text>
+            <Text style={[styles.signInText, { color: colors.onSurfaceVariant }]}>
+              Sign in to sync your settings across devices, save analysis history, and access advanced features.
+            </Text>
+            <Button
+              title="Sign In"
+              onPress={() => router.push('/auth')}
+              style={styles.signInButton}
+            />
+          </GlassCard>
+        )}
 
         {/* Settings Items */}
         <GlassCard style={styles.settingsCard}>
@@ -214,6 +255,34 @@ export default function SettingsScreen() {
           ))}
         </GlassCard>
 
+        {/* AI Provider Selection */}
+        <GlassCard style={styles.providerCard}>
+          <View style={styles.sectionHeader}>
+            <Brain size={24} color={colors.primary} />
+            <Text style={[styles.sectionTitle, { color: colors.onSurface }]}>
+              AI Provider Preference
+            </Text>
+          </View>
+          <Text style={[styles.sectionDescription, { color: colors.onSurfaceVariant }]}>
+            Choose your preferred AI provider for document analysis.
+          </Text>
+          
+          <View style={styles.providerButtons}>
+            <Button
+              title="DeepSeek AI"
+              onPress={() => setPreferredProvider('deepseek')}
+              variant={preferredProvider === 'deepseek' ? 'filled' : 'outlined'}
+              style={styles.providerButton}
+            />
+            <Button
+              title="Google Gemini"
+              onPress={() => setPreferredProvider('gemini')}
+              variant={preferredProvider === 'gemini' ? 'filled' : 'outlined'}
+              style={styles.providerButton}
+            />
+          </View>
+        </GlassCard>
+
         {/* API Keys */}
         <GlassCard style={styles.apiKeysCard}>
           <View style={styles.sectionHeader}>
@@ -224,6 +293,7 @@ export default function SettingsScreen() {
           </View>
           <Text style={[styles.sectionDescription, { color: colors.onSurfaceVariant }]}>
             Configure your API keys for DeepSeek AI and Google Gemini to enable document analysis.
+            {!user && ' Your keys are stored securely on your device.'}
           </Text>
           
           <Input
@@ -245,26 +315,51 @@ export default function SettingsScreen() {
           />
           
           <Button
-            title="Save API Keys"
+            title="Save Settings"
             onPress={saveApiKeys}
             loading={loading}
             style={styles.saveButton}
           />
         </GlassCard>
 
-        {/* Sign Out */}
-        <GlassCard style={styles.signOutCard}>
-          <TouchableOpacity style={styles.signOutItem} onPress={handleSignOut}>
-            <View style={styles.settingLeft}>
-              <View style={[styles.settingIcon, { backgroundColor: colors.errorContainer }]}>
-                <LogOut size={20} color={colors.error} />
-              </View>
-              <Text style={[styles.settingTitle, { color: colors.error }]}>
-                Sign Out
-              </Text>
-            </View>
-          </TouchableOpacity>
+        {/* API Key Help */}
+        <GlassCard style={styles.helpCard}>
+          <Text style={[styles.helpTitle, { color: colors.onSurface }]}>
+            How to get API keys
+          </Text>
+          <View style={styles.helpItem}>
+            <Text style={[styles.helpLabel, { color: colors.primary }]}>
+              DeepSeek AI:
+            </Text>
+            <Text style={[styles.helpText, { color: colors.onSurfaceVariant }]}>
+              Visit platform.deepseek.com, create an account, and generate an API key
+            </Text>
+          </View>
+          <View style={styles.helpItem}>
+            <Text style={[styles.helpLabel, { color: colors.primary }]}>
+              Google Gemini:
+            </Text>
+            <Text style={[styles.helpText, { color: colors.onSurfaceVariant }]}>
+              Visit aistudio.google.com/app/apikey and generate an API key
+            </Text>
+          </View>
         </GlassCard>
+
+        {/* Sign Out (only for authenticated users) */}
+        {user && (
+          <GlassCard style={styles.signOutCard}>
+            <TouchableOpacity style={styles.signOutItem} onPress={handleSignOut}>
+              <View style={styles.settingLeft}>
+                <View style={[styles.settingIcon, { backgroundColor: colors.errorContainer }]}>
+                  <LogOut size={20} color={colors.error} />
+                </View>
+                <Text style={[styles.settingTitle, { color: colors.error }]}>
+                  Sign Out
+                </Text>
+              </View>
+            </TouchableOpacity>
+          </GlassCard>
+        )}
       </ScrollView>
     </SafeAreaView>
   );
@@ -274,10 +369,6 @@ const styles = StyleSheet.create({
   container: {
     flex: 1,
     padding: spacing.md,
-  },
-  centeredContainer: {
-    justifyContent: 'center',
-    alignItems: 'center',
   },
   header: {
     alignItems: 'center',
@@ -293,6 +384,28 @@ const styles = StyleSheet.create({
     fontSize: 16,
     fontFamily: 'Inter-Medium',
     textAlign: 'center',
+  },
+  signInPrompt: {
+    alignItems: 'center',
+    padding: spacing.lg,
+    marginBottom: spacing.lg,
+  },
+  signInTitle: {
+    fontSize: 18,
+    fontFamily: 'Inter-SemiBold',
+    marginTop: spacing.sm,
+    marginBottom: spacing.xs,
+    textAlign: 'center',
+  },
+  signInText: {
+    fontSize: 14,
+    fontFamily: 'Inter-Regular',
+    textAlign: 'center',
+    lineHeight: 20,
+    marginBottom: spacing.md,
+  },
+  signInButton: {
+    marginTop: spacing.xs,
   },
   settingsCard: {
     marginBottom: spacing.lg,
@@ -328,7 +441,7 @@ const styles = StyleSheet.create({
     fontSize: 14,
     fontFamily: 'Inter-Regular',
   },
-  apiKeysCard: {
+  providerCard: {
     marginBottom: spacing.lg,
   },
   sectionHeader: {
@@ -347,8 +460,39 @@ const styles = StyleSheet.create({
     lineHeight: 20,
     marginBottom: spacing.lg,
   },
+  providerButtons: {
+    flexDirection: 'row',
+    gap: spacing.sm,
+  },
+  providerButton: {
+    flex: 1,
+  },
+  apiKeysCard: {
+    marginBottom: spacing.lg,
+  },
   saveButton: {
     marginTop: spacing.sm,
+  },
+  helpCard: {
+    marginBottom: spacing.lg,
+  },
+  helpTitle: {
+    fontSize: 16,
+    fontFamily: 'Inter-SemiBold',
+    marginBottom: spacing.md,
+  },
+  helpItem: {
+    marginBottom: spacing.sm,
+  },
+  helpLabel: {
+    fontSize: 14,
+    fontFamily: 'Inter-SemiBold',
+    marginBottom: spacing.xs,
+  },
+  helpText: {
+    fontSize: 14,
+    fontFamily: 'Inter-Regular',
+    lineHeight: 18,
   },
   signOutCard: {
     marginBottom: spacing.xl,
@@ -357,27 +501,5 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     paddingVertical: spacing.sm,
-  },
-  signInPrompt: {
-    alignItems: 'center',
-    padding: spacing.xl,
-    margin: spacing.md,
-  },
-  signInTitle: {
-    fontSize: 24,
-    fontFamily: 'Inter-SemiBold',
-    marginTop: spacing.md,
-    marginBottom: spacing.sm,
-    textAlign: 'center',
-  },
-  signInText: {
-    fontSize: 16,
-    fontFamily: 'Inter-Regular',
-    textAlign: 'center',
-    lineHeight: 24,
-    marginBottom: spacing.lg,
-  },
-  signInButton: {
-    marginTop: spacing.sm,
   },
 });

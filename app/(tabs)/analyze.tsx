@@ -1,10 +1,11 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { View, Text, ScrollView, StyleSheet, Alert } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import * as DocumentPicker from 'expo-document-picker';
 import * as FileSystem from 'expo-file-system';
 import { LinearGradient } from 'expo-linear-gradient';
 import { Upload, FileText, Settings, Brain } from 'lucide-react-native';
+import AsyncStorage from '@react-native-async-storage/async-storage';
 import { useTheme, spacing } from '@/constants/Theme';
 import { GlassCard } from '@/components/ui/GlassCard';
 import { Button } from '@/components/ui/Button';
@@ -33,12 +34,62 @@ interface Analysis {
   };
 }
 
+const LOCAL_STORAGE_KEYS = {
+  DEEPSEEK_API_KEY: 'deepseek_api_key',
+  GEMINI_API_KEY: 'gemini_api_key',
+  PREFERRED_AI_PROVIDER: 'preferred_ai_provider',
+};
+
 export default function AnalyzeScreen() {
   const { colors } = useTheme();
   const { user } = useAuth();
   const [document, setDocument] = useState<Document | null>(null);
   const [analysis, setAnalysis] = useState<Analysis | null>(null);
   const [selectedProvider, setSelectedProvider] = useState<'deepseek' | 'gemini'>('deepseek');
+  const [apiKeys, setApiKeys] = useState({
+    deepseek: '',
+    gemini: '',
+  });
+
+  useEffect(() => {
+    loadSettings();
+  }, [user]);
+
+  const loadSettings = async () => {
+    try {
+      if (user) {
+        // Load from Supabase for authenticated users
+        const { data, error } = await supabase
+          .from('user_settings')
+          .select('*')
+          .eq('user_id', user.id)
+          .single();
+
+        if (data) {
+          setSelectedProvider(data.preferred_ai_provider || 'deepseek');
+          setApiKeys({
+            deepseek: data.deepseek_api_key || '',
+            gemini: data.gemini_api_key || '',
+          });
+        }
+      } else {
+        // Load from local storage for guest users
+        const [deepseek, gemini, provider] = await Promise.all([
+          AsyncStorage.getItem(LOCAL_STORAGE_KEYS.DEEPSEEK_API_KEY),
+          AsyncStorage.getItem(LOCAL_STORAGE_KEYS.GEMINI_API_KEY),
+          AsyncStorage.getItem(LOCAL_STORAGE_KEYS.PREFERRED_AI_PROVIDER),
+        ]);
+
+        setApiKeys({
+          deepseek: deepseek || '',
+          gemini: gemini || '',
+        });
+        setSelectedProvider((provider as 'deepseek' | 'gemini') || 'deepseek');
+      }
+    } catch (error) {
+      console.error('Error loading settings:', error);
+    }
+  };
 
   const pickDocument = async () => {
     try {
@@ -71,16 +122,20 @@ export default function AnalyzeScreen() {
   const startAnalysis = async () => {
     if (!document) return;
 
-    // Get API key from environment or user settings
-    let apiKey = selectedProvider === 'deepseek' 
-      ? process.env.EXPO_PUBLIC_DEEPSEEK_API_KEY
-      : process.env.EXPO_PUBLIC_GEMINI_API_KEY;
+    // Get API key from settings or environment
+    const apiKey = apiKeys[selectedProvider] || 
+      (selectedProvider === 'deepseek' 
+        ? process.env.EXPO_PUBLIC_DEEPSEEK_API_KEY
+        : process.env.EXPO_PUBLIC_GEMINI_API_KEY);
 
     if (!apiKey) {
       Alert.alert(
         'API Key Required',
         `Please configure your ${selectedProvider === 'deepseek' ? 'DeepSeek' : 'Gemini'} API key in the settings.`,
-        [{ text: 'OK' }]
+        [
+          { text: 'Go to Settings', onPress: () => router.push('/settings') },
+          { text: 'Cancel', style: 'cancel' }
+        ]
       );
       return;
     }
@@ -217,6 +272,11 @@ export default function AnalyzeScreen() {
     );
   };
 
+  const hasApiKey = apiKeys[selectedProvider] || 
+    (selectedProvider === 'deepseek' 
+      ? process.env.EXPO_PUBLIC_DEEPSEEK_API_KEY
+      : process.env.EXPO_PUBLIC_GEMINI_API_KEY);
+
   return (
     <SafeAreaView style={{ flex: 1, backgroundColor: colors.background }}>
       <LinearGradient
@@ -235,6 +295,25 @@ export default function AnalyzeScreen() {
             Upload and analyze your documents with AI
           </Text>
         </View>
+
+        {/* API Key Warning */}
+        {!hasApiKey && (
+          <GlassCard style={styles.warningCard}>
+            <Settings size={24} color={colors.tertiary} />
+            <Text style={[styles.warningTitle, { color: colors.onSurface }]}>
+              API Key Required
+            </Text>
+            <Text style={[styles.warningText, { color: colors.onSurfaceVariant }]}>
+              Configure your {selectedProvider === 'deepseek' ? 'DeepSeek' : 'Gemini'} API key in settings to start analyzing documents.
+            </Text>
+            <Button
+              title="Go to Settings"
+              onPress={() => router.push('/settings')}
+              variant="outlined"
+              style={styles.warningButton}
+            />
+          </GlassCard>
+        )}
 
         {/* Document Upload */}
         <GlassCard style={styles.uploadCard}>
@@ -299,7 +378,7 @@ export default function AnalyzeScreen() {
         )}
 
         {/* Analysis Button */}
-        {document && !analysis && (
+        {document && !analysis && hasApiKey && (
           <GlassCard style={styles.analyzeCard}>
             <Brain size={32} color={colors.primary} />
             <Text style={[styles.analyzeTitle, { color: colors.onSurface }]}>
@@ -384,6 +463,27 @@ const styles = StyleSheet.create({
     fontSize: 16,
     fontFamily: 'Inter-Medium',
     textAlign: 'center',
+  },
+  warningCard: {
+    alignItems: 'center',
+    padding: spacing.lg,
+    marginBottom: spacing.lg,
+  },
+  warningTitle: {
+    fontSize: 18,
+    fontFamily: 'Inter-SemiBold',
+    marginTop: spacing.sm,
+    marginBottom: spacing.xs,
+  },
+  warningText: {
+    fontSize: 14,
+    fontFamily: 'Inter-Regular',
+    textAlign: 'center',
+    lineHeight: 20,
+    marginBottom: spacing.md,
+  },
+  warningButton: {
+    marginTop: spacing.xs,
   },
   sectionTitle: {
     fontSize: 18,
