@@ -88,60 +88,31 @@ export function MarkdownRenderer({ content, style }: MarkdownRendererProps) {
     return elements.length > 0 ? elements : [{ type: 'text', content: text }];
   };
 
-  const renderInlineElements = (elements: MarkdownElement[]) => {
-    return elements.map((element, index) => {
-      const key = `${element.type}-${index}`;
-      
-      switch (element.type) {
-        case 'bold':
-          return (
-            <Text key={key} style={[styles.bold, { color: colors.onSurface }]}>
-              {element.content}
-            </Text>
-          );
-        case 'italic':
-          return (
-            <Text key={key} style={[styles.italic, { color: colors.onSurface }]}>
-              {element.content}
-            </Text>
-          );
-        case 'code':
-          return (
-            <Text key={key} style={[styles.inlineCode, { 
-              backgroundColor: colors.surfaceVariant,
-              color: colors.onSurfaceVariant 
-            }]}>
-              {element.content}
-            </Text>
-          );
-        case 'strikethrough':
-          return (
-            <Text key={key} style={[styles.strikethrough, { color: colors.onSurface }]}>
-              {element.content}
-            </Text>
-          );
-        case 'underline':
-          return (
-            <Text key={key} style={[styles.underline, { color: colors.onSurface }]}>
-              {element.content}
-            </Text>
-          );
-        case 'link':
-          return (
-            <TouchableOpacity key={key} onPress={() => console.log('Open link:', element.url)}>
-              <Text style={[styles.link, { color: colors.primary }]}>
-                {element.content}
-              </Text>
-            </TouchableOpacity>
-          );
-        default:
-          return (
-            <Text key={key} style={{ color: colors.onSurface }}>
-              {element.content}
-            </Text>
-          );
-      }
-    });
+  const renderInlineText = (elements: MarkdownElement[]): string => {
+    // Convert inline elements to a single formatted string
+    return elements.map(element => element.content).join('');
+  };
+
+  const getInlineTextStyle = (elements: MarkdownElement[]) => {
+    // Determine the primary style based on the first non-text element
+    const styledElement = elements.find(el => el.type !== 'text');
+    if (!styledElement) return [styles.paragraph, { color: colors.onSurface }];
+
+    switch (styledElement.type) {
+      case 'bold':
+        return [styles.bold, { color: colors.onSurface }];
+      case 'italic':
+        return [styles.italic, { color: colors.onSurface }];
+      case 'code':
+        return [styles.inlineCode, { 
+          backgroundColor: colors.surfaceVariant,
+          color: colors.onSurfaceVariant 
+        }];
+      case 'link':
+        return [styles.link, { color: colors.primary }];
+      default:
+        return [styles.paragraph, { color: colors.onSurface }];
+    }
   };
 
   const parseMarkdown = (text: string) => {
@@ -163,15 +134,12 @@ export function MarkdownRenderer({ content, style }: MarkdownRendererProps) {
           <View key={`list-${elements.length}`} style={styles.list}>
             {currentList.map((item, index) => {
               const cleanItem = item.replace(/^[-*+]\s+/, '');
-              const inlineElements = parseInlineMarkdown(cleanItem);
               return (
                 <View key={index} style={styles.listItem}>
                   <Text style={[styles.bullet, { color: colors.primary }]}>•</Text>
-                  <View style={styles.listContent}>
-                    <Text style={[styles.listItemText, { color: colors.onSurface }]}>
-                      {renderInlineElements(inlineElements)}
-                    </Text>
-                  </View>
+                  <Text style={[styles.listItemText, { color: colors.onSurface }]}>
+                    {cleanItem}
+                  </Text>
                 </View>
               );
             })}
@@ -187,17 +155,14 @@ export function MarkdownRenderer({ content, style }: MarkdownRendererProps) {
           <View key={`ordered-list-${elements.length}`} style={styles.list}>
             {currentOrderedList.map((item, index) => {
               const cleanItem = item.replace(/^\d+\.\s+/, '');
-              const inlineElements = parseInlineMarkdown(cleanItem);
               return (
                 <View key={index} style={styles.listItem}>
                   <Text style={[styles.orderedBullet, { color: colors.primary }]}>
                     {index + 1}.
                   </Text>
-                  <View style={styles.listContent}>
-                    <Text style={[styles.listItemText, { color: colors.onSurface }]}>
-                      {renderInlineElements(inlineElements)}
-                    </Text>
-                  </View>
+                  <Text style={[styles.listItemText, { color: colors.onSurface }]}>
+                    {cleanItem}
+                  </Text>
                 </View>
               );
             })}
@@ -283,13 +248,10 @@ export function MarkdownRenderer({ content, style }: MarkdownRendererProps) {
           }]}>
             {currentQuote.map((quoteLine, index) => {
               const cleanLine = quoteLine.replace(/^>\s*/, '');
-              const inlineElements = parseInlineMarkdown(cleanLine);
               return (
-                <View key={index} style={styles.quoteLine}>
-                  <Text style={[styles.quoteText, { color: colors.onSurface }]}>
-                    {renderInlineElements(inlineElements)}
-                  </Text>
-                </View>
+                <Text key={index} style={[styles.quoteText, { color: colors.onSurface }]}>
+                  {cleanLine}
+                </Text>
               );
             })}
           </View>
@@ -371,7 +333,6 @@ export function MarkdownRenderer({ content, style }: MarkdownRendererProps) {
         flushQuote();
         const level = line.match(/^#+/)?.[0].length || 1;
         const text = line.replace(/^#+\s*/, '');
-        const inlineElements = parseInlineMarkdown(text);
         
         elements.push(
           <View key={index} style={styles.headerContainer}>
@@ -383,7 +344,7 @@ export function MarkdownRenderer({ content, style }: MarkdownRendererProps) {
               level === 5 ? styles.h5 : styles.h6,
               { color: colors.onSurface }
             ]}>
-              {renderInlineElements(inlineElements)}
+              {text}
             </Text>
           </View>
         );
@@ -417,10 +378,13 @@ export function MarkdownRenderer({ content, style }: MarkdownRendererProps) {
         flushTable();
         flushQuote();
         const inlineElements = parseInlineMarkdown(line);
+        const textContent = renderInlineText(inlineElements);
+        const textStyle = getInlineTextStyle(inlineElements);
+        
         elements.push(
           <View key={index} style={styles.paragraphContainer}>
-            <Text style={[styles.paragraph, { color: colors.onSurface }]}>
-              {renderInlineElements(inlineElements)}
+            <Text style={textStyle}>
+              {textContent}
             </Text>
           </View>
         );
@@ -498,17 +462,27 @@ const styles = StyleSheet.create({
     lineHeight: 24,
   },
   bold: {
+    fontSize: 16,
     fontFamily: 'Inter-Bold',
+    lineHeight: 24,
   },
   italic: {
+    fontSize: 16,
     fontFamily: 'Inter-Regular',
     fontStyle: 'italic',
+    lineHeight: 24,
   },
   strikethrough: {
+    fontSize: 16,
+    fontFamily: 'Inter-Regular',
     textDecorationLine: 'line-through',
+    lineHeight: 24,
   },
   underline: {
+    fontSize: 16,
+    fontFamily: 'Inter-Regular',
     textDecorationLine: 'underline',
+    lineHeight: 24,
   },
   inlineCode: {
     fontFamily: 'Courier',
@@ -516,9 +490,13 @@ const styles = StyleSheet.create({
     paddingHorizontal: 4,
     paddingVertical: 2,
     borderRadius: 4,
+    lineHeight: 20,
   },
   link: {
+    fontSize: 16,
+    fontFamily: 'Inter-Regular',
     textDecorationLine: 'underline',
+    lineHeight: 24,
   },
   list: {
     marginVertical: spacing.sm,
@@ -542,10 +520,8 @@ const styles = StyleSheet.create({
     marginTop: 2,
     minWidth: 20,
   },
-  listContent: {
-    flex: 1,
-  },
   listItemText: {
+    flex: 1,
     fontSize: 16,
     fontFamily: 'Inter-Regular',
     lineHeight: 24,
@@ -605,13 +581,11 @@ const styles = StyleSheet.create({
     marginVertical: spacing.sm,
     borderRadius: borderRadius.sm,
   },
-  quoteLine: {
-    marginBottom: spacing.xs,
-  },
   quoteText: {
     fontSize: 16,
     fontFamily: 'Inter-Regular',
     lineHeight: 24,
+    marginBottom: spacing.xs,
   },
   horizontalRule: {
     height: 2,
