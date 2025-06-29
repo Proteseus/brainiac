@@ -44,6 +44,52 @@ const LOCAL_STORAGE_KEYS = {
   PREFERRED_AI_PROVIDER: 'preferred_ai_provider',
 };
 
+// Comprehensive content sanitization function
+const sanitizeDocumentContent = (content: string): string => {
+  if (!content) return '';
+  
+  try {
+    return content
+      // Remove null bytes and problematic control characters
+      .replace(/\u0000/g, '')
+      .replace(/[\u0001-\u0008\u000B\u000C\u000E-\u001F\u007F-\u009F]/g, '')
+      // Handle Unicode escape sequences
+      .replace(/\\u0000/g, '')
+      .replace(/\\u([0-9A-Fa-f]{4})/g, (match, hex) => {
+        const codePoint = parseInt(hex, 16);
+        // Skip problematic characters
+        if (codePoint === 0 || (codePoint >= 1 && codePoint <= 31) || (codePoint >= 127 && codePoint <= 159)) {
+          return '';
+        }
+        try {
+          return String.fromCharCode(codePoint);
+        } catch {
+          return '';
+        }
+      })
+      // Remove other problematic sequences
+      .replace(/\x00/g, '')
+      .replace(/[\x01-\x08\x0B\x0C\x0E-\x1F\x7F-\x9F]/g, '')
+      // Normalize whitespace
+      .replace(/\s+/g, ' ')
+      .trim();
+  } catch (error) {
+    console.error('Error sanitizing content:', error);
+    // Fallback: remove all non-printable characters
+    return content.replace(/[^\x20-\x7E\u00A0-\uFFFF]/g, '').trim();
+  }
+};
+
+const sanitizeTitle = (title: string): string => {
+  if (!title) return 'Untitled Document';
+  
+  const sanitized = sanitizeDocumentContent(title)
+    .substring(0, 255)
+    .trim();
+    
+  return sanitized || 'Untitled Document';
+};
+
 export default function AnalyzeScreen() {
   const { colors } = useTheme();
   const router = useRouter();
@@ -124,12 +170,36 @@ export default function AnalyzeScreen() {
 
       if (!result.canceled && result.assets[0]) {
         const asset = result.assets[0];
-        const content = await FileSystem.readAsStringAsync(asset.uri);
+        let content = '';
+        
+        try {
+          content = await FileSystem.readAsStringAsync(asset.uri);
+        } catch (error) {
+          console.error('Error reading file:', error);
+          showError(
+            'File Error',
+            'Failed to read the selected file. Please try a different file.',
+            pickDocument
+          );
+          return;
+        }
+
+        // Sanitize content immediately after reading
+        const sanitizedContent = sanitizeDocumentContent(content);
+        const sanitizedTitle = sanitizeTitle(asset.name);
+        
+        if (!sanitizedContent.trim()) {
+          showError(
+            'Invalid Document',
+            'The selected document appears to be empty or contains only invalid characters. Please try a different document.'
+          );
+          return;
+        }
         
         const doc: Document = {
           id: Math.random().toString(36).substr(2, 9),
-          title: asset.name,
-          content,
+          title: sanitizedTitle,
+          content: sanitizedContent,
           fileType: asset.mimeType?.includes('pdf') ? 'pdf' : 
                    asset.mimeType?.includes('markdown') ? 'md' :
                    asset.mimeType?.includes('csv') ? 'csv' :
@@ -142,6 +212,7 @@ export default function AnalyzeScreen() {
         setAnalysisProgress(null);
       }
     } catch (error) {
+      console.error('Document picker error:', error);
       showError(
         'Document Error',
         'Failed to load the selected document. Please try again.',
@@ -170,12 +241,12 @@ export default function AnalyzeScreen() {
 
       if (analysisError) throw analysisError;
 
-      // Save each analysis section
+      // Save each analysis section with sanitized content
       const sectionsToSave = Object.entries(result.sections).map(([sectionType, section]) => ({
         analysis_id: analysisData.id,
         section_type: sectionType as 'summary' | 'insights' | 'recommendations' | 'technical' | 'full_report',
-        title: section.title,
-        content: section.content,
+        title: sanitizeTitle(section.title),
+        content: sanitizeDocumentContent(section.content),
       }));
 
       const { error: sectionsError } = await supabase
@@ -222,12 +293,20 @@ export default function AnalyzeScreen() {
       if (user) {
         setAnalysisProgress({ progress: 5, message: 'Saving document...', stage: 'init' });
         
+        // Double-check content sanitization before saving
+        const finalContent = sanitizeDocumentContent(document.content);
+        const finalTitle = sanitizeTitle(document.title);
+        
+        if (!finalContent.trim()) {
+          throw new Error('Document content is invalid after sanitization');
+        }
+        
         const { data: documentData, error: documentError } = await supabase
           .from('documents')
           .insert({
             user_id: user.id,
-            title: document.title,
-            content: document.content,
+            title: finalTitle,
+            content: finalContent,
             file_type: document.fileType,
             file_size: document.fileSize,
           })
@@ -243,7 +322,7 @@ export default function AnalyzeScreen() {
       }
 
       const metadata: DocumentMetadata = {
-        title: document.title,
+        title: sanitizeTitle(document.title),
         fileType: document.fileType,
         fileSize: document.fileSize,
         wordCount: document.content.trim().split(/\s+/).length,
