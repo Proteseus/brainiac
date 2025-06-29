@@ -1,11 +1,13 @@
 import React, { useState, useEffect } from 'react';
-import { View, Text, ScrollView, StyleSheet, TouchableOpacity } from 'react-native';
+import { View, Text, ScrollView, StyleSheet, TouchableOpacity, RefreshControl } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { LinearGradient } from 'expo-linear-gradient';
-import { History, FileText, Calendar, ChevronRight, Search } from 'lucide-react-native';
+import { History, FileText, Calendar, ChevronRight, Search, RefreshCw } from 'lucide-react-native';
 import { useTheme, spacing } from '@/constants/Theme';
 import { GlassCard } from '@/components/ui/GlassCard';
 import { Input } from '@/components/ui/Input';
+import { CustomModal } from '@/components/ui/CustomModal';
+import { useModal } from '@/hooks/useModal';
 import { useAuth } from '@/hooks/useAuth';
 import { supabase } from '@/lib/supabase';
 
@@ -16,14 +18,18 @@ interface AnalysisHistory {
   status: 'pending' | 'processing' | 'completed' | 'failed';
   created_at: string;
   completed_at: string | null;
+  sections_count: number;
 }
 
 export default function HistoryScreen() {
   const { colors } = useTheme();
   const { user } = useAuth();
+  const { modalState, hideModal, showError } = useModal();
+  
   const [analyses, setAnalyses] = useState<AnalysisHistory[]>([]);
   const [searchQuery, setSearchQuery] = useState('');
   const [loading, setLoading] = useState(true);
+  const [refreshing, setRefreshing] = useState(false);
 
   useEffect(() => {
     if (user) {
@@ -34,6 +40,8 @@ export default function HistoryScreen() {
   }, [user]);
 
   const loadAnalysisHistory = async () => {
+    if (!user) return;
+    
     try {
       const { data, error } = await supabase
         .from('analyses')
@@ -43,9 +51,10 @@ export default function HistoryScreen() {
           status,
           created_at,
           completed_at,
-          documents!inner(title)
+          documents!inner(title),
+          analysis_sections(count)
         `)
-        .eq('user_id', user?.id)
+        .eq('user_id', user.id)
         .order('created_at', { ascending: false });
 
       if (error) throw error;
@@ -57,14 +66,26 @@ export default function HistoryScreen() {
         status: item.status,
         created_at: item.created_at,
         completed_at: item.completed_at,
+        sections_count: item.analysis_sections?.length || 0,
       })) || [];
 
       setAnalyses(formattedData);
     } catch (error) {
       console.error('Error loading analysis history:', error);
+      showError(
+        'Loading Error',
+        'Failed to load your analysis history. Please try again.',
+        loadAnalysisHistory
+      );
     } finally {
       setLoading(false);
+      setRefreshing(false);
     }
+  };
+
+  const onRefresh = async () => {
+    setRefreshing(true);
+    await loadAnalysisHistory();
   };
 
   const filteredAnalyses = analyses.filter(analysis =>
@@ -105,6 +126,31 @@ export default function HistoryScreen() {
         return 'Failed';
       default:
         return 'Pending';
+    }
+  };
+
+  const viewAnalysisDetails = async (analysisId: string) => {
+    try {
+      // Load the full analysis details
+      const { data, error } = await supabase
+        .from('analysis_sections')
+        .select('*')
+        .eq('analysis_id', analysisId)
+        .order('created_at');
+
+      if (error) throw error;
+
+      // For now, just show a modal with the sections count
+      // In a full implementation, you'd navigate to a detailed view
+      showError(
+        'Analysis Details',
+        `This analysis contains ${data?.length || 0} sections. Full analysis viewer coming soon!`
+      );
+    } catch (error) {
+      showError(
+        'Error',
+        'Failed to load analysis details. Please try again.'
+      );
     }
   };
 
@@ -150,16 +196,39 @@ export default function HistoryScreen() {
           </Text>
         </View>
 
-        {/* Search */}
-        <Input
-          placeholder="Search analyses..."
-          value={searchQuery}
-          onChangeText={setSearchQuery}
-          style={styles.searchInput}
-        />
+        {/* Search and Refresh */}
+        <View style={styles.searchContainer}>
+          <Input
+            placeholder="Search analyses..."
+            value={searchQuery}
+            onChangeText={setSearchQuery}
+            style={styles.searchInput}
+          />
+          <TouchableOpacity
+            style={[styles.refreshButton, { backgroundColor: colors.primaryContainer }]}
+            onPress={onRefresh}
+            disabled={refreshing}
+          >
+            <RefreshCw 
+              size={20} 
+              color={colors.onPrimaryContainer}
+              style={refreshing ? { transform: [{ rotate: '180deg' }] } : undefined}
+            />
+          </TouchableOpacity>
+        </View>
 
         {/* Analysis List */}
-        <ScrollView style={styles.analysesList} showsVerticalScrollIndicator={false}>
+        <ScrollView 
+          style={styles.analysesList} 
+          showsVerticalScrollIndicator={false}
+          refreshControl={
+            <RefreshControl
+              refreshing={refreshing}
+              onRefresh={onRefresh}
+              tintColor={colors.primary}
+            />
+          }
+        >
           {loading ? (
             <GlassCard style={styles.loadingCard}>
               <Text style={[styles.loadingText, { color: colors.onSurfaceVariant }]}>
@@ -181,7 +250,11 @@ export default function HistoryScreen() {
             </GlassCard>
           ) : (
             filteredAnalyses.map((analysis) => (
-              <TouchableOpacity key={analysis.id} style={styles.analysisItem}>
+              <TouchableOpacity 
+                key={analysis.id} 
+                style={styles.analysisItem}
+                onPress={() => viewAnalysisDetails(analysis.id)}
+              >
                 <GlassCard style={styles.analysisCard}>
                   <View style={styles.analysisHeader}>
                     <View style={styles.analysisInfo}>
@@ -199,6 +272,16 @@ export default function HistoryScreen() {
                         <Text style={[styles.metaText, { color: colors.onSurfaceVariant }]}>
                           {formatDate(analysis.created_at)}
                         </Text>
+                        {analysis.sections_count > 0 && (
+                          <>
+                            <Text style={[styles.metaDot, { color: colors.onSurfaceVariant }]}>
+                              •
+                            </Text>
+                            <Text style={[styles.metaText, { color: colors.onSurfaceVariant }]}>
+                              {analysis.sections_count} sections
+                            </Text>
+                          </>
+                        )}
                       </View>
                     </View>
                     <View style={styles.analysisActions}>
@@ -222,6 +305,18 @@ export default function HistoryScreen() {
           )}
         </ScrollView>
       </View>
+
+      {/* Custom Modal */}
+      <CustomModal
+        visible={modalState.visible}
+        onClose={hideModal}
+        type={modalState.type}
+        title={modalState.title}
+        message={modalState.message}
+        primaryButton={modalState.primaryButton}
+        secondaryButton={modalState.secondaryButton}
+        dismissible={modalState.dismissible}
+      />
     </SafeAreaView>
   );
 }
@@ -250,8 +345,21 @@ const styles = StyleSheet.create({
     fontFamily: 'Inter-Medium',
     textAlign: 'center',
   },
-  searchInput: {
+  searchContainer: {
+    flexDirection: 'row',
+    gap: spacing.sm,
     marginBottom: spacing.lg,
+  },
+  searchInput: {
+    flex: 1,
+    marginBottom: 0,
+  },
+  refreshButton: {
+    width: 48,
+    height: 48,
+    borderRadius: 8,
+    alignItems: 'center',
+    justifyContent: 'center',
   },
   analysesList: {
     flex: 1,
@@ -304,6 +412,7 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     gap: spacing.xs,
+    flexWrap: 'wrap',
   },
   metaText: {
     fontSize: 12,

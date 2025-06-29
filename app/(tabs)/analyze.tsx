@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { View, Text, ScrollView, StyleSheet, Alert, TouchableOpacity } from 'react-native';
+import { View, Text, ScrollView, StyleSheet, TouchableOpacity } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import * as DocumentPicker from 'expo-document-picker';
 import * as FileSystem from 'expo-file-system';
@@ -12,6 +12,8 @@ import { GlassCard } from '@/components/ui/GlassCard';
 import { Button } from '@/components/ui/Button';
 import { AnalysisProgress } from '@/components/ui/AnalysisProgress';
 import { AnalysisResultsRenderer } from '@/components/ui/AnalysisResultsRenderer';
+import { CustomModal } from '@/components/ui/CustomModal';
+import { useModal } from '@/hooks/useModal';
 import { useAuth } from '@/hooks/useAuth';
 import { supabase } from '@/lib/supabase';
 import { 
@@ -46,6 +48,8 @@ export default function AnalyzeScreen() {
   const { colors } = useTheme();
   const router = useRouter();
   const { user } = useAuth();
+  const { modalState, hideModal, showSuccess, showError } = useModal();
+  
   const [document, setDocument] = useState<Document | null>(null);
   const [selectedTemplate, setSelectedTemplate] = useState<AnalysisTemplate | null>(null);
   const [analysisConfig, setAnalysisConfig] = useState<Partial<AnalysisConfiguration>>({
@@ -103,6 +107,11 @@ export default function AnalyzeScreen() {
       }
     } catch (error) {
       console.error('Error loading settings:', error);
+      showError(
+        'Settings Error',
+        'Failed to load your settings. Please try again.',
+        loadSettings
+      );
     }
   };
 
@@ -133,7 +142,56 @@ export default function AnalyzeScreen() {
         setAnalysisProgress(null);
       }
     } catch (error) {
-      Alert.alert('Error', 'Failed to pick document');
+      showError(
+        'Document Error',
+        'Failed to load the selected document. Please try again.',
+        pickDocument
+      );
+    }
+  };
+
+  const saveAnalysisToDatabase = async (result: AnalysisResult, documentId: string) => {
+    if (!user) return; // Only save for authenticated users
+
+    try {
+      // Save the analysis record
+      const { data: analysisData, error: analysisError } = await supabase
+        .from('analyses')
+        .insert({
+          user_id: user.id,
+          document_id: documentId,
+          ai_provider: selectedProvider,
+          status: 'completed',
+          progress: 100,
+          completed_at: new Date().toISOString(),
+        })
+        .select()
+        .single();
+
+      if (analysisError) throw analysisError;
+
+      // Save each analysis section
+      const sectionsToSave = Object.entries(result.sections).map(([sectionType, section]) => ({
+        analysis_id: analysisData.id,
+        section_type: sectionType as 'summary' | 'insights' | 'recommendations' | 'technical' | 'full_report',
+        title: section.title,
+        content: section.content,
+      }));
+
+      const { error: sectionsError } = await supabase
+        .from('analysis_sections')
+        .insert(sectionsToSave);
+
+      if (sectionsError) throw sectionsError;
+
+      console.log('Analysis saved successfully to database');
+    } catch (error) {
+      console.error('Error saving analysis to database:', error);
+      // Don't throw error to avoid breaking the analysis flow
+      showError(
+        'Save Warning',
+        'Analysis completed successfully but could not be saved to your history. The results are still available for viewing.'
+      );
     }
   };
 
@@ -146,13 +204,10 @@ export default function AnalyzeScreen() {
         : process.env.EXPO_PUBLIC_GEMINI_API_KEY);
 
     if (!apiKey) {
-      Alert.alert(
+      showError(
         'API Key Required',
         `Please configure your ${selectedProvider === 'deepseek' ? 'DeepSeek' : 'Gemini'} API key in the settings.`,
-        [
-          { text: 'Go to Settings', onPress: () => router.push('/settings') },
-          { text: 'Cancel', style: 'cancel' }
-        ]
+        () => router.push('/settings')
       );
       return;
     }
@@ -161,11 +216,37 @@ export default function AnalyzeScreen() {
     setAnalysisProgress({ progress: 0, message: 'Starting analysis...', stage: 'init' });
 
     try {
+      // First, save the document to database if user is authenticated
+      let savedDocumentId = document.id;
+      
+      if (user) {
+        setAnalysisProgress({ progress: 5, message: 'Saving document...', stage: 'init' });
+        
+        const { data: documentData, error: documentError } = await supabase
+          .from('documents')
+          .insert({
+            user_id: user.id,
+            title: document.title,
+            content: document.content,
+            file_type: document.fileType,
+            file_size: document.fileSize,
+          })
+          .select()
+          .single();
+
+        if (documentError) {
+          console.error('Error saving document:', documentError);
+          // Continue with analysis even if document save fails
+        } else {
+          savedDocumentId = documentData.id;
+        }
+      }
+
       const metadata: DocumentMetadata = {
         title: document.title,
         fileType: document.fileType,
         fileSize: document.fileSize,
-        wordCount: 0,
+        wordCount: document.content.trim().split(/\s+/).length,
         createdAt: new Date(),
       };
 
@@ -191,32 +272,29 @@ export default function AnalyzeScreen() {
 
       setAnalysisResult(result);
 
-      // Save to database if user is logged in
+      // Save analysis to database
       if (user) {
-        await supabase
-          .from('documents')
-          .insert({
-            user_id: user.id,
-            title: document.title,
-            content: document.content,
-            file_type: document.fileType,
-            file_size: document.fileSize,
-          });
-
-        await supabase
-          .from('analyses')
-          .insert({
-            user_id: user.id,
-            document_id: result.documentId,
-            ai_provider: selectedProvider,
-            status: 'completed',
-            progress: 100,
-            completed_at: new Date().toISOString(),
-          });
+        setAnalysisProgress({ progress: 98, message: 'Saving analysis...', stage: 'saving' });
+        await saveAnalysisToDatabase(result, savedDocumentId);
       }
 
+      setAnalysisProgress({ progress: 100, message: 'Analysis complete!', stage: 'complete' });
+
+      showSuccess(
+        'Analysis Complete',
+        'Your document has been analyzed successfully. You can now view the detailed results below.'
+      );
+
     } catch (error) {
-      Alert.alert('Error', `Analysis failed: ${error instanceof Error ? error.message : 'Unknown error'}`);
+      console.error('Analysis error:', error);
+      const errorMessage = error instanceof Error ? error.message : 'Unknown error occurred';
+      
+      showError(
+        'Analysis Failed',
+        `Analysis failed: ${errorMessage}. Please check your API key and try again.`,
+        startAnalysis
+      );
+      
       setAnalysisProgress({ progress: 0, message: 'Analysis failed', stage: 'error' });
     } finally {
       setIsAnalyzing(false);
@@ -407,6 +485,18 @@ export default function AnalyzeScreen() {
             onShare={() => console.log('Share analysis')}
           />
         </View>
+
+        {/* Custom Modal */}
+        <CustomModal
+          visible={modalState.visible}
+          onClose={hideModal}
+          type={modalState.type}
+          title={modalState.title}
+          message={modalState.message}
+          primaryButton={modalState.primaryButton}
+          secondaryButton={modalState.secondaryButton}
+          dismissible={modalState.dismissible}
+        />
       </SafeAreaView>
     );
   }
@@ -549,6 +639,14 @@ export default function AnalyzeScreen() {
                   Sentiment & entity analysis
                 </Text>
               </View>
+              {user && (
+                <View style={styles.featureItem}>
+                  <CheckCircle size={16} color={colors.primary} />
+                  <Text style={[styles.featureText, { color: colors.onSurfaceVariant }]}>
+                    Saved to your analysis history
+                  </Text>
+                </View>
+              )}
             </View>
             <Button
               title="Start Advanced Analysis"
@@ -570,6 +668,18 @@ export default function AnalyzeScreen() {
           />
         )}
       </ScrollView>
+
+      {/* Custom Modal */}
+      <CustomModal
+        visible={modalState.visible}
+        onClose={hideModal}
+        type={modalState.type}
+        title={modalState.title}
+        message={modalState.message}
+        primaryButton={modalState.primaryButton}
+        secondaryButton={modalState.secondaryButton}
+        dismissible={modalState.dismissible}
+      />
     </SafeAreaView>
   );
 }
