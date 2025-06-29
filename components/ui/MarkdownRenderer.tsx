@@ -90,22 +90,24 @@ export function MarkdownRenderer({ content, style }: MarkdownRendererProps) {
 
   const renderInlineElements = (elements: MarkdownElement[]) => {
     return elements.map((element, index) => {
+      const key = `${element.type}-${index}`;
+      
       switch (element.type) {
         case 'bold':
           return (
-            <Text key={index} style={[styles.bold, { color: colors.onSurface }]}>
+            <Text key={key} style={[styles.bold, { color: colors.onSurface }]}>
               {element.content}
             </Text>
           );
         case 'italic':
           return (
-            <Text key={index} style={[styles.italic, { color: colors.onSurface }]}>
+            <Text key={key} style={[styles.italic, { color: colors.onSurface }]}>
               {element.content}
             </Text>
           );
         case 'code':
           return (
-            <Text key={index} style={[styles.inlineCode, { 
+            <Text key={key} style={[styles.inlineCode, { 
               backgroundColor: colors.surfaceVariant,
               color: colors.onSurfaceVariant 
             }]}>
@@ -114,19 +116,19 @@ export function MarkdownRenderer({ content, style }: MarkdownRendererProps) {
           );
         case 'strikethrough':
           return (
-            <Text key={index} style={[styles.strikethrough, { color: colors.onSurface }]}>
+            <Text key={key} style={[styles.strikethrough, { color: colors.onSurface }]}>
               {element.content}
             </Text>
           );
         case 'underline':
           return (
-            <Text key={index} style={[styles.underline, { color: colors.onSurface }]}>
+            <Text key={key} style={[styles.underline, { color: colors.onSurface }]}>
               {element.content}
             </Text>
           );
         case 'link':
           return (
-            <TouchableOpacity key={index} onPress={() => console.log('Open link:', element.url)}>
+            <TouchableOpacity key={key} onPress={() => console.log('Open link:', element.url)}>
               <Text style={[styles.link, { color: colors.primary }]}>
                 {element.content}
               </Text>
@@ -134,7 +136,7 @@ export function MarkdownRenderer({ content, style }: MarkdownRendererProps) {
           );
         default:
           return (
-            <Text key={index} style={{ color: colors.onSurface }}>
+            <Text key={key} style={{ color: colors.onSurface }}>
               {element.content}
             </Text>
           );
@@ -166,7 +168,9 @@ export function MarkdownRenderer({ content, style }: MarkdownRendererProps) {
                 <View key={index} style={styles.listItem}>
                   <Text style={[styles.bullet, { color: colors.primary }]}>•</Text>
                   <View style={styles.listContent}>
-                    {renderInlineElements(inlineElements)}
+                    <Text style={[styles.listItemText, { color: colors.onSurface }]}>
+                      {renderInlineElements(inlineElements)}
+                    </Text>
                   </View>
                 </View>
               );
@@ -190,7 +194,9 @@ export function MarkdownRenderer({ content, style }: MarkdownRendererProps) {
                     {index + 1}.
                   </Text>
                   <View style={styles.listContent}>
-                    {renderInlineElements(inlineElements)}
+                    <Text style={[styles.listItemText, { color: colors.onSurface }]}>
+                      {renderInlineElements(inlineElements)}
+                    </Text>
                   </View>
                 </View>
               );
@@ -280,7 +286,9 @@ export function MarkdownRenderer({ content, style }: MarkdownRendererProps) {
               const inlineElements = parseInlineMarkdown(cleanLine);
               return (
                 <View key={index} style={styles.quoteLine}>
-                  {renderInlineElements(inlineElements)}
+                  <Text style={[styles.quoteText, { color: colors.onSurface }]}>
+                    {renderInlineElements(inlineElements)}
+                  </Text>
                 </View>
               );
             })}
@@ -536,8 +544,11 @@ const styles = StyleSheet.create({
   },
   listContent: {
     flex: 1,
-    flexDirection: 'row',
-    flexWrap: 'wrap',
+  },
+  listItemText: {
+    fontSize: 16,
+    fontFamily: 'Inter-Regular',
+    lineHeight: 24,
   },
   codeBlock: {
     padding: spacing.md,
@@ -595,9 +606,12 @@ const styles = StyleSheet.create({
     borderRadius: borderRadius.sm,
   },
   quoteLine: {
-    flexDirection: 'row',
-    flexWrap: 'wrap',
     marginBottom: spacing.xs,
+  },
+  quoteText: {
+    fontSize: 16,
+    fontFamily: 'Inter-Regular',
+    lineHeight: 24,
   },
   horizontalRule: {
     height: 2,
