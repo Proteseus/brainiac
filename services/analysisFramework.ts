@@ -192,6 +192,38 @@ export class DocumentAnalysisFramework {
     return this.templates.find(template => template.id === id);
   }
 
+  // Sanitize content to remove problematic Unicode characters
+  private sanitizeContent(content: string): string {
+    if (!content) return '';
+    
+    return content
+      // Remove null bytes and other control characters
+      .replace(/\u0000/g, '')
+      .replace(/[\u0001-\u0008\u000B\u000C\u000E-\u001F\u007F]/g, '')
+      // Replace problematic Unicode escape sequences
+      .replace(/\\u0000/g, '')
+      .replace(/\\u([0-9A-Fa-f]{4})/g, (match, hex) => {
+        const codePoint = parseInt(hex, 16);
+        // Skip control characters and null bytes
+        if (codePoint === 0 || (codePoint >= 1 && codePoint <= 31) || codePoint === 127) {
+          return '';
+        }
+        return String.fromCharCode(codePoint);
+      })
+      // Normalize whitespace
+      .replace(/\s+/g, ' ')
+      .trim();
+  }
+
+  // Sanitize title to ensure it's safe for database storage
+  private sanitizeTitle(title: string): string {
+    if (!title) return 'Untitled Document';
+    
+    return this.sanitizeContent(title)
+      .substring(0, 255) // Limit title length
+      .trim() || 'Untitled Document';
+  }
+
   async analyzeDocument(
     content: string,
     metadata: DocumentMetadata,
@@ -203,13 +235,23 @@ export class DocumentAnalysisFramework {
     const startTime = Date.now();
     
     try {
-      // Stage 1: Document preprocessing
+      // Stage 1: Document preprocessing and sanitization
       onProgress?.({ progress: 5, message: 'Preprocessing document...', stage: 'preprocessing' });
-      const preprocessedContent = await this.preprocessDocument(content, metadata);
+      const sanitizedContent = this.sanitizeContent(content);
+      const sanitizedMetadata = {
+        ...metadata,
+        title: this.sanitizeTitle(metadata.title),
+      };
+      
+      if (!sanitizedContent.trim()) {
+        throw new Error('Document content is empty or contains only invalid characters');
+      }
+      
+      const preprocessedContent = await this.preprocessDocument(sanitizedContent, sanitizedMetadata);
       
       // Stage 2: Metadata extraction
       onProgress?.({ progress: 15, message: 'Extracting document metadata...', stage: 'metadata' });
-      const enhancedMetadata = await this.extractMetadata(preprocessedContent, metadata);
+      const enhancedMetadata = await this.extractMetadata(preprocessedContent, sanitizedMetadata);
       
       // Stage 3: Content analysis
       onProgress?.({ progress: 25, message: 'Analyzing document structure...', stage: 'structure' });
@@ -389,12 +431,15 @@ export class DocumentAnalysisFramework {
           provider
         );
         
+        // Sanitize AI response content
+        const sanitizedResult = this.sanitizeContent(sectionResult);
+        
         sections[key] = {
           title: this.formatSectionTitle(key),
-          content: sectionResult,
+          content: sanitizedResult,
           confidence: 0.85, // Placeholder confidence score
-          word_count: this.countWords(sectionResult),
-          key_points: this.extractKeyPoints(sectionResult),
+          word_count: this.countWords(sanitizedResult),
+          key_points: this.extractKeyPoints(sanitizedResult),
         };
       }
     }
