@@ -14,7 +14,7 @@ export interface AnalysisTemplate {
   id: string;
   name: string;
   description: string;
-  category: 'business' | 'academic' | 'legal' | 'technical' | 'creative' | 'financial';
+  category: 'business' | 'academic' | 'legal' | 'technical' | 'creative' | 'financial' | 'personal' | 'medical' | 'education' | 'marketing';
   prompts: {
     summary: string;
     insights: string;
@@ -108,76 +108,359 @@ export interface VisualizationData {
 
 export class DocumentAnalysisFramework {
   private templates: AnalysisTemplate[] = [
+    // Business Templates
     {
       id: 'business-report',
       name: 'Business Report Analysis',
       description: 'Comprehensive analysis for business documents, reports, and proposals',
       category: 'business',
       prompts: {
-        summary: 'Provide an executive summary focusing on key business metrics, objectives, and outcomes.',
-        insights: 'Identify critical business insights, market trends, competitive advantages, and strategic implications.',
-        recommendations: 'Suggest actionable business recommendations based on the analysis, including implementation strategies.',
-        technical: 'Detail technical specifications, methodologies, and data analysis approaches used.',
+        summary: 'Provide an executive summary focusing on key business metrics, objectives, outcomes, and business impact. Include ROI projections and market positioning.',
+        insights: 'Identify critical business insights, market trends, competitive advantages, SWOT analysis, and strategic implications. Highlight growth opportunities and market gaps.',
+        recommendations: 'Suggest actionable business recommendations with implementation timelines, resource requirements, KPIs, and success metrics. Include risk mitigation strategies.',
+        technical: 'Detail technical specifications, methodologies, data analysis approaches, business intelligence tools, and analytical frameworks used.',
       },
       outputFormat: 'structured',
       estimatedTime: 120,
     },
+    {
+      id: 'meeting-summary',
+      name: 'Meeting Summary & Action Items',
+      description: 'Extract key decisions, action items, and follow-ups from meeting transcripts or notes',
+      category: 'business',
+      prompts: {
+        summary: 'Summarize the meeting purpose, attendees, key discussion points, decisions made, and outcomes. Include meeting duration and effectiveness assessment.',
+        insights: 'Analyze meeting dynamics, stakeholder positions, consensus areas, conflicts, underlying issues, and strategic implications of decisions.',
+        recommendations: 'List all action items with owners, deadlines, priority levels, and dependencies. Suggest follow-up meetings and communication strategies.',
+        technical: 'Extract meeting metadata, participant engagement levels, decision timelines, and action item tracking mechanisms.',
+      },
+      outputFormat: 'bullet_points',
+      estimatedTime: 60,
+    },
+    {
+      id: 'project-proposal',
+      name: 'Project Proposal Review',
+      description: 'Analyze project proposals for feasibility, risks, and value proposition',
+      category: 'business',
+      prompts: {
+        summary: 'Summarize project objectives, scope, deliverables, timeline, budget, expected outcomes, and success criteria.',
+        insights: 'Evaluate project feasibility, risk factors, resource requirements, innovation aspects, competitive advantage, and strategic alignment.',
+        recommendations: 'Provide recommendations for project improvement, risk mitigation, resource optimization, timeline adjustments, and success factors.',
+        technical: 'Analyze technical requirements, implementation approach, technology stack, methodologies, and project management framework.',
+      },
+      outputFormat: 'structured',
+      estimatedTime: 100,
+    },
+    {
+      id: 'market-analysis',
+      name: 'Market Research Analysis',
+      description: 'Deep dive into market research reports, competitor analysis, and industry trends',
+      category: 'business',
+      prompts: {
+        summary: 'Summarize market size, growth rate, key trends, customer segments, competitive landscape, and market opportunities.',
+        insights: 'Identify market drivers, barriers, customer pain points, emerging trends, disruption threats, and strategic opportunities.',
+        recommendations: 'Suggest market entry strategies, positioning approaches, product adaptations, pricing strategies, and growth initiatives.',
+        technical: 'Detail research methodology, data sources, analytical tools, statistical models, and validation techniques used.',
+      },
+      outputFormat: 'structured',
+      estimatedTime: 140,
+    },
+
+    // Academic & Education Templates
     {
       id: 'academic-research',
       name: 'Academic Research Analysis',
       description: 'In-depth analysis for academic papers, research documents, and scholarly articles',
       category: 'academic',
       prompts: {
-        summary: 'Summarize the research objectives, methodology, key findings, and conclusions.',
-        insights: 'Analyze the research contribution, novelty, limitations, and implications for the field.',
-        recommendations: 'Suggest areas for future research, methodology improvements, and practical applications.',
-        technical: 'Examine the research methodology, statistical analysis, and technical approaches used.',
+        summary: 'Summarize research objectives, methodology, key findings, conclusions, and contributions to the field. Include sample size and statistical significance.',
+        insights: 'Analyze research novelty, theoretical implications, practical applications, limitations, ethical considerations, and future research directions.',
+        recommendations: 'Suggest methodology improvements, additional research areas, practical implementations, collaboration opportunities, and publication strategies.',
+        technical: 'Examine research methodology, statistical analysis, experimental design, data collection methods, and technical approaches in detail.',
       },
       outputFormat: 'structured',
       estimatedTime: 180,
     },
     {
-      id: 'legal-document',
-      name: 'Legal Document Analysis',
-      description: 'Specialized analysis for contracts, legal briefs, and regulatory documents',
-      category: 'legal',
+      id: 'book-summary',
+      name: 'Book Summary & Review',
+      description: 'Comprehensive book analysis covering themes, key insights, and takeaways',
+      category: 'education',
       prompts: {
-        summary: 'Summarize key legal provisions, obligations, rights, and terms.',
-        insights: 'Identify potential legal risks, compliance issues, and strategic considerations.',
-        recommendations: 'Suggest legal strategies, risk mitigation approaches, and compliance measures.',
-        technical: 'Analyze legal precedents, regulatory requirements, and procedural aspects.',
+        summary: 'Provide a comprehensive book summary including main arguments, key concepts, narrative structure, and author\'s thesis. Include chapter breakdown.',
+        insights: 'Analyze major themes, underlying messages, philosophical implications, character development (for fiction), and real-world applications.',
+        recommendations: 'Identify actionable insights, practical applications, further reading suggestions, discussion topics, and implementation strategies.',
+        technical: 'Analyze writing style, narrative techniques, research methodology (for non-fiction), source credibility, and structural elements.',
       },
-      outputFormat: 'structured',
+      outputFormat: 'narrative',
       estimatedTime: 150,
     },
     {
-      id: 'technical-specification',
-      name: 'Technical Specification Analysis',
-      description: 'Detailed analysis for technical documents, specifications, and engineering reports',
-      category: 'technical',
+      id: 'course-material',
+      name: 'Course Material Analysis',
+      description: 'Analyze educational content, syllabi, and learning materials',
+      category: 'education',
       prompts: {
-        summary: 'Summarize technical requirements, specifications, and system architecture.',
-        insights: 'Analyze technical feasibility, performance implications, and design considerations.',
-        recommendations: 'Suggest technical improvements, optimization strategies, and implementation approaches.',
-        technical: 'Detail technical specifications, algorithms, protocols, and implementation details.',
+        summary: 'Summarize learning objectives, key topics, knowledge areas, skills covered, and assessment methods. Include difficulty level and prerequisites.',
+        insights: 'Identify knowledge gaps, learning progression, pedagogical approaches, engagement strategies, and alignment with educational standards.',
+        recommendations: 'Suggest supplementary materials, teaching improvements, assessment enhancements, and learning optimization strategies.',
+        technical: 'Analyze instructional design, content structure, learning outcomes alignment, and educational technology integration.',
       },
       outputFormat: 'structured',
-      estimatedTime: 140,
+      estimatedTime: 90,
     },
+    {
+      id: 'literature-review',
+      name: 'Literature Review Synthesis',
+      description: 'Synthesize multiple academic papers and research findings',
+      category: 'academic',
+      prompts: {
+        summary: 'Synthesize key findings across multiple sources, identifying consensus, contradictions, gaps, and research evolution.',
+        insights: 'Analyze research trends, theoretical developments, methodological preferences, citation patterns, and emerging paradigms.',
+        recommendations: 'Identify research gaps, methodological improvements, theoretical contributions, and future research directions.',
+        technical: 'Evaluate research quality, methodological rigor, statistical validity, and reproducibility across studies.',
+      },
+      outputFormat: 'structured',
+      estimatedTime: 200,
+    },
+
+    // Personal & Productivity Templates
+    {
+      id: 'personal-goals',
+      name: 'Personal Goals & Planning',
+      description: 'Analyze personal development plans, goals, and self-improvement content',
+      category: 'personal',
+      prompts: {
+        summary: 'Summarize personal goals, development areas, action plans, timelines, and success metrics. Include motivation factors.',
+        insights: 'Identify strength areas, improvement opportunities, potential obstacles, support systems, and alignment with personal values.',
+        recommendations: 'Suggest goal optimization strategies, habit formation techniques, accountability measures, and milestone celebrations.',
+        technical: 'Analyze goal-setting frameworks, progress tracking methods, and personal development methodologies.',
+      },
+      outputFormat: 'bullet_points',
+      estimatedTime: 70,
+    },
+    {
+      id: 'product-review',
+      name: 'Product Review Analysis',
+      description: 'Analyze product reviews, specifications, and comparison documents',
+      category: 'personal',
+      prompts: {
+        summary: 'Summarize product features, performance metrics, user feedback, pros/cons, and overall value proposition.',
+        insights: 'Identify user satisfaction patterns, common issues, competitive advantages, and market positioning.',
+        recommendations: 'Provide purchasing recommendations, usage tips, alternative suggestions, and value optimization strategies.',
+        technical: 'Analyze technical specifications, performance benchmarks, quality metrics, and innovation features.',
+      },
+      outputFormat: 'structured',
+      estimatedTime: 80,
+    },
+    {
+      id: 'travel-guide',
+      name: 'Travel Guide Analysis',
+      description: 'Extract key information from travel guides, itineraries, and destination reviews',
+      category: 'personal',
+      prompts: {
+        summary: 'Summarize destination highlights, attractions, logistics, costs, best times to visit, and travel requirements.',
+        insights: 'Identify hidden gems, tourist traps, cultural insights, local customs, and optimization opportunities.',
+        recommendations: 'Suggest itinerary improvements, budget optimizations, safety precautions, and authentic experiences.',
+        technical: 'Analyze travel logistics, transportation options, accommodation features, and booking strategies.',
+      },
+      outputFormat: 'bullet_points',
+      estimatedTime: 60,
+    },
+
+    // Enhanced Financial Templates
     {
       id: 'financial-analysis',
       name: 'Financial Document Analysis',
       description: 'Comprehensive analysis for financial reports, statements, and investment documents',
       category: 'financial',
       prompts: {
-        summary: 'Summarize financial performance, key metrics, and overall financial health.',
-        insights: 'Analyze financial trends, ratios, risks, and growth opportunities.',
-        recommendations: 'Suggest financial strategies, investment recommendations, and risk management approaches.',
-        technical: 'Detail financial methodologies, calculations, and analytical frameworks used.',
+        summary: 'Summarize financial performance, key metrics, profitability, liquidity, solvency ratios, and overall financial health.',
+        insights: 'Analyze financial trends, cash flow patterns, investment performance, risk factors, growth opportunities, and benchmark comparisons.',
+        recommendations: 'Suggest financial strategies, investment recommendations, risk management approaches, cost optimization, and revenue enhancement.',
+        technical: 'Detail financial methodologies, valuation models, accounting standards, regulatory compliance, and analytical frameworks.',
       },
       outputFormat: 'structured',
       estimatedTime: 130,
     },
+    {
+      id: 'investment-report',
+      name: 'Investment Thesis Analysis',
+      description: 'Analyze investment proposals, due diligence reports, and market opportunities',
+      category: 'financial',
+      prompts: {
+        summary: 'Summarize investment opportunity, returns potential, risk profile, time horizon, and exit strategies.',
+        insights: 'Evaluate market timing, competitive advantages, management quality, financial projections, and macroeconomic factors.',
+        recommendations: 'Provide investment allocation suggestions, risk mitigation strategies, portfolio fit, and monitoring requirements.',
+        technical: 'Analyze financial models, valuation methods, due diligence findings, and investment analytical frameworks.',
+      },
+      outputFormat: 'structured',
+      estimatedTime: 160,
+    },
+
+    // Marketing Templates
+    {
+      id: 'marketing-campaign',
+      name: 'Marketing Campaign Analysis',
+      description: 'Analyze marketing strategies, campaign performance, and customer insights',
+      category: 'marketing',
+      prompts: {
+        summary: 'Summarize campaign objectives, target audience, key messages, channels used, performance metrics, and outcomes.',
+        insights: 'Analyze customer behavior patterns, conversion funnels, brand perception, competitive positioning, and market response.',
+        recommendations: 'Suggest campaign optimizations, A/B testing opportunities, channel improvements, and budget reallocation strategies.',
+        technical: 'Detail marketing analytics, attribution models, ROI calculations, and performance tracking methodologies.',
+      },
+      outputFormat: 'structured',
+      estimatedTime: 110,
+    },
+    {
+      id: 'content-strategy',
+      name: 'Content Strategy Analysis',
+      description: 'Analyze content plans, SEO strategies, and audience engagement approaches',
+      category: 'marketing',
+      prompts: {
+        summary: 'Summarize content objectives, target personas, distribution channels, content pillars, and engagement metrics.',
+        insights: 'Identify content performance patterns, audience preferences, SEO effectiveness, and competitive content gaps.',
+        recommendations: 'Suggest content optimizations, new topic opportunities, distribution improvements, and engagement enhancement strategies.',
+        technical: 'Analyze content analytics, SEO tools, social media metrics, and content management systems.',
+      },
+      outputFormat: 'structured',
+      estimatedTime: 90,
+    },
+
+    // Medical & Healthcare Templates
+    {
+      id: 'medical-report',
+      name: 'Medical Report Analysis',
+      description: 'Analyze medical reports, research papers, and healthcare documents (for educational purposes)',
+      category: 'medical',
+      prompts: {
+        summary: 'Summarize medical findings, diagnoses, treatment options, prognoses, and clinical recommendations.',
+        insights: 'Analyze treatment effectiveness, risk factors, preventive measures, and patient care optimization opportunities.',
+        recommendations: 'Suggest follow-up actions, lifestyle modifications, additional testing, and specialist consultations.',
+        technical: 'Examine medical methodologies, diagnostic criteria, treatment protocols, and clinical guidelines.',
+      },
+      outputFormat: 'structured',
+      estimatedTime: 150,
+    },
+    {
+      id: 'clinical-trial',
+      name: 'Clinical Trial Analysis',
+      description: 'Analyze clinical trial protocols, results, and medical research studies',
+      category: 'medical',
+      prompts: {
+        summary: 'Summarize trial objectives, methodology, participant demographics, interventions, outcomes, and statistical significance.',
+        insights: 'Evaluate trial design quality, result validity, clinical relevance, safety profiles, and regulatory implications.',
+        recommendations: 'Suggest practice changes, further research needs, clinical applications, and patient selection criteria.',
+        technical: 'Analyze statistical methods, trial design, data collection protocols, and regulatory compliance.',
+      },
+      outputFormat: 'structured',
+      estimatedTime: 180,
+    },
+
+    // Enhanced Legal Templates
+    {
+      id: 'legal-document',
+      name: 'Legal Document Analysis',
+      description: 'Specialized analysis for contracts, legal briefs, and regulatory documents',
+      category: 'legal',
+      prompts: {
+        summary: 'Summarize key legal provisions, obligations, rights, terms, conditions, and legal implications.',
+        insights: 'Identify potential legal risks, compliance issues, strategic considerations, and jurisdictional implications.',
+        recommendations: 'Suggest legal strategies, risk mitigation approaches, compliance measures, and negotiation points.',
+        technical: 'Analyze legal precedents, regulatory requirements, procedural aspects, and applicable case law.',
+      },
+      outputFormat: 'structured',
+      estimatedTime: 150,
+    },
+    {
+      id: 'contract-review',
+      name: 'Contract Review & Analysis',
+      description: 'Detailed analysis of contracts, agreements, and legal terms',
+      category: 'legal',
+      prompts: {
+        summary: 'Extract key terms, obligations, deliverables, timelines, payment terms, liabilities, and termination clauses.',
+        insights: 'Identify unfavorable terms, risk exposures, missing protections, and negotiation opportunities.',
+        recommendations: 'Suggest contract modifications, risk allocations, protective clauses, and compliance requirements.',
+        technical: 'Analyze contract structure, legal language precision, enforceability, and regulatory compliance.',
+      },
+      outputFormat: 'structured',
+      estimatedTime: 120,
+    },
+
+    // Enhanced Technical Templates
+    {
+      id: 'technical-specification',
+      name: 'Technical Specification Analysis',
+      description: 'Detailed analysis for technical documents, specifications, and engineering reports',
+      category: 'technical',
+      prompts: {
+        summary: 'Summarize technical requirements, specifications, system architecture, performance criteria, and implementation constraints.',
+        insights: 'Analyze technical feasibility, performance implications, design trade-offs, scalability considerations, and integration requirements.',
+        recommendations: 'Suggest technical improvements, optimization strategies, alternative approaches, and implementation best practices.',
+        technical: 'Detail technical specifications, algorithms, protocols, standards compliance, and implementation methodologies.',
+      },
+      outputFormat: 'structured',
+      estimatedTime: 140,
+    },
+    {
+      id: 'api-documentation',
+      name: 'API Documentation Review',
+      description: 'Analyze API specifications, documentation, and technical guides',
+      category: 'technical',
+      prompts: {
+        summary: 'Summarize API functionality, endpoints, data structures, authentication methods, and integration patterns.',
+        insights: 'Evaluate API design quality, developer experience, security considerations, and performance characteristics.',
+        recommendations: 'Suggest API improvements, documentation enhancements, security hardening, and adoption strategies.',
+        technical: 'Analyze API architecture, data models, error handling, rate limiting, and versioning strategies.',
+      },
+      outputFormat: 'structured',
+      estimatedTime: 100,
+    },
+    {
+      id: 'software-review',
+      name: 'Software Architecture Review',
+      description: 'Analyze software design documents, architecture patterns, and code reviews',
+      category: 'technical',
+      prompts: {
+        summary: 'Summarize system architecture, design patterns, technology stack, components, and data flow.',
+        insights: 'Evaluate scalability, maintainability, performance, security, and technical debt implications.',
+        recommendations: 'Suggest architectural improvements, refactoring opportunities, technology upgrades, and best practice implementations.',
+        technical: 'Analyze design patterns, coding standards, testing strategies, deployment processes, and monitoring approaches.',
+      },
+      outputFormat: 'structured',
+      estimatedTime: 160,
+    },
+
+    // Creative Templates
+    {
+      id: 'creative-writing',
+      name: 'Creative Writing Analysis',
+      description: 'Analyze stories, scripts, articles, and other creative content',
+      category: 'creative',
+      prompts: {
+        summary: 'Summarize plot, themes, character development, narrative structure, and artistic intentions.',
+        insights: 'Analyze literary devices, symbolism, character motivations, conflict resolution, and emotional impact.',
+        recommendations: 'Suggest improvements in pacing, character depth, dialogue, narrative tension, and thematic development.',
+        technical: 'Examine writing style, voice, structure, genre conventions, and literary techniques employed.',
+      },
+      outputFormat: 'narrative',
+      estimatedTime: 120,
+    },
+    {
+      id: 'film-script',
+      name: 'Film Script Analysis',
+      description: 'Analyze movie scripts, screenplays, and storytelling structure',
+      category: 'creative',
+      prompts: {
+        summary: 'Summarize plot structure, character arcs, key scenes, dialogue themes, and visual storytelling elements.',
+        insights: 'Analyze three-act structure, pacing, character development, conflict resolution, and audience engagement.',
+        recommendations: 'Suggest scene improvements, dialogue enhancements, structural changes, and visual storytelling opportunities.',
+        technical: 'Examine screenplay formatting, scene descriptions, character actions, and industry standards.',
+      },
+      outputFormat: 'narrative',
+      estimatedTime: 130,
+    }
   ];
 
   getTemplates(): AnalysisTemplate[] {
@@ -504,7 +787,7 @@ export class DocumentAnalysisFramework {
   }
 
   private async callGeminiAPI(systemPrompt: string, userPrompt: string, apiKey: string): Promise<string> {
-    const response = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent?key=${apiKey}`, {
+    const response = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent?key=${apiKey}`, {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
