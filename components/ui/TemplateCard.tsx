@@ -1,6 +1,24 @@
 import React from 'react';
 import { View, Text, TouchableOpacity, StyleSheet } from 'react-native';
-import { Clock, Target, ChartBar as BarChart3, FileText, Briefcase, GraduationCap, Scale, Wrench, DollarSign } from 'lucide-react-native';
+import {
+  Clock,
+  Target,
+  ChartBar as BarChart3,
+  FileText,
+  Briefcase,
+  GraduationCap,
+  Scale,
+  Wrench,
+  DollarSign,
+  User,
+  Stethoscope,
+  Megaphone,
+  BookOpen,
+  Users,
+  Video,
+  PenTool,
+  Heart
+} from 'lucide-react-native';
 import { useTheme, spacing, borderRadius } from '@/constants/Theme';
 import { AnalysisTemplate } from '@/services/analysisFramework';
 
@@ -25,6 +43,16 @@ export function TemplateCard({ template, isSelected, onSelect }: TemplateCardPro
         return Wrench;
       case 'financial':
         return DollarSign;
+      case 'personal':
+        return User;
+      case 'medical':
+        return Stethoscope;
+      case 'education':
+        return BookOpen;
+      case 'marketing':
+        return Megaphone;
+      case 'creative':
+        return PenTool;
       default:
         return FileText;
     }
