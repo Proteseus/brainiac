@@ -89,7 +89,7 @@ export function AnalysisResultsRenderer({ result, onExport, onShare }: AnalysisR
                   <View key={index} style={styles.keyPointItem}>
                     <View style={[styles.keyPointBullet, { backgroundColor: colors.primary }]} />
                     <Text style={[styles.keyPointText, { color: colors.onSurfaceVariant }]}>
-                      {point}
+                      {point || ''}
                     </Text>
                   </View>
                 ))}
@@ -103,7 +103,7 @@ export function AnalysisResultsRenderer({ result, onExport, onShare }: AnalysisR
                 </Text>
                 {section.citations.map((citation: string, index: number) => (
                   <Text key={index} style={[styles.citationText, { color: colors.onSurfaceVariant }]}>
-                    [{index + 1}] {citation}
+                    [{index + 1}] {citation || ''}
                   </Text>
                 ))}
               </View>
@@ -140,7 +140,7 @@ export function AnalysisResultsRenderer({ result, onExport, onShare }: AnalysisR
                   : colors.onSurfaceVariant
               }
             ]}>
-              {sentiment.overall_sentiment.toUpperCase()}
+              {(sentiment.overall_sentiment || 'neutral').toUpperCase()}
             </Text>
           </View>
           
@@ -217,7 +217,7 @@ export function AnalysisResultsRenderer({ result, onExport, onShare }: AnalysisR
               {sentiment.emotional_tone.map((tone, index) => (
                 <View key={index} style={[styles.toneTag, { backgroundColor: colors.secondaryContainer }]}>
                   <Text style={[styles.toneText, { color: colors.onSecondaryContainer }]}>
-                    {tone}
+                    {tone || ''}
                   </Text>
                 </View>
               ))}
@@ -252,7 +252,7 @@ export function AnalysisResultsRenderer({ result, onExport, onShare }: AnalysisR
               {entities.slice(0, 10).map((entity, index) => (
                 <View key={index} style={[styles.entityItem, { backgroundColor: colors.surfaceVariant }]}>
                   <Text style={[styles.entityText, { color: colors.onSurface }]}>
-                    {entity.text}
+                    {entity.text || 'Unknown'}
                   </Text>
                   <Text style={[styles.entityConfidence, { color: colors.onSurfaceVariant }]}>
                     {Math.round(entity.confidence * 100)}%
@@ -326,7 +326,7 @@ export function AnalysisResultsRenderer({ result, onExport, onShare }: AnalysisR
               Template:
             </Text>
             <Text style={[styles.metadataValue, { color: colors.onSurface }]}>
-              {result.configuration.template.name}
+              {result.configuration.template?.name || 'Default'}
             </Text>
           </View>
           
